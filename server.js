@@ -94,7 +94,7 @@ function handle(room,player,msg,ws){
       const hand=room.hands[player],idx=hand?.indexOf(msg.card);if(idx<0||!hand)return error(ws,'That card is not in your hand.');const card=hand[idx];
       if(card==='Quantum Jump'){
         const target=Number(msg.version);if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');if(!Number.isInteger(target)||target<0||target>=room.version)return error(ws,'Choose a previous version to restore.');
-        hand.splice(idx,1);const i='ABC'.indexOf(msg.dial);room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);p.points+=1;addLog(room,`${p.name} plays Quantum Jump on dial ${msg.dial}, restoring it to its Version ${target} position.`);
+        hand.splice(idx,1);const i='ABC'.indexOf(msg.dial);room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);p.points+=1;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and gains 1 point.`);
       }else{
         if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');
         hand.splice(idx,1);applyCard(room,card,msg.dial);p.points+=1;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and gains 1 point.`);
