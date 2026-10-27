@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, 'public');
 const rooms = new Map();
+const MAX_PLAYERS = 12;
 const names = ['Forward Pulse','Reverse Pulse','Double Pulse','Chaos Shift','Overload','Reset Signal','Mirror Flip','Quantum Jump'];
 const mime = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
 const rand = n => crypto.randomInt(n);
@@ -20,7 +21,7 @@ function applyCard(room, card, dial) {
   else if(card==='Double Pulse') value=(old+2)%4;
   else if(card==='Overload') value=(old+3)%4;
   else if(card==='Chaos Shift') { const values=[0,1,2,3].filter(v=>v!==old); value=values[rand(3)]; }
-  else if(card==='Quantum Jump') value=(old+(rand(2)?1:3))%4;
+  else if(card==='Quantum Jump') value=room.version>0?room.history[rand(room.version)][i]:(old+(rand(2)?1:3))%4;
   else if(card==='Reset Signal') value=old===0?2:0;
   else value=3-old;
   room.state[i]=value; room.version++; room.history[room.version]=[...room.state]; room.discard.push(card);
@@ -40,7 +41,7 @@ function serial(room, player) {
     log:room.log, winners:room.winners, deckCount:room.deck.length,
     canAct:room.phase==='actions'&&room.players[room.turn]?.id===player,
     canStart:room.phase==='lobby'&&room.host===player&&room.players.length>=3,
-    actionIndex:room.turn, roomEvents:room.roomEvents
+    actionIndex:room.turn, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version)
   };
 }
 function send(ws,obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
@@ -48,10 +49,10 @@ function broadcast(room){ for(const p of room.players) if(p.socket) send(p.socke
 function error(ws,message){send(ws,{type:'error',message});}
 function advance(room){ room.turn++; if(room.turn>=room.players.length){room.phase='predict';addLog(room,'All actions are in. Lock your three-dial prediction.');} }
 function start(room){
-  if(room.players.length<3||room.players.length>6||room.phase!=='lobby')return false;
+  if(room.players.length<3||room.players.length>MAX_PLAYERS||room.phase!=='lobby')return false;
   room.round=1;
   room.state=[rand(4),rand(4),rand(4)];room.history=[[...room.state]];room.version=0;
-  room.deck=shuffled(names.flatMap(n=>[n,n,n]));room.discard=[];
+  const copies=Math.max(3,Math.ceil((room.players.length*2+2)/names.length));room.deck=shuffled(names.flatMap(n=>Array(copies).fill(n)));room.discard=[];
   const setup=[draw(room),draw(room)]; for(const card of setup)applyCard(room,card,'ABC'[rand(3)]);
   room.players.forEach(p=>{p.points=10;const first=randomClue(room,0);room.clues[p.id]=[first,randomClue(room,0,[first.dial]),randomClue(room,1)];room.hands[p.id]=[draw(room),draw(room)];room.verified[p.id]=[];});
   room.publicVersion=room.version;room.roundStart=room.version;room.turn=0;room.phase='actions';room.log=[];room.predictions={};room.earned={};room.winners=[];room.endReason=null;room.roundEnd=null;room.roomEvents=[];
@@ -75,7 +76,7 @@ function scorePredictions(room){
 }
 function handle(room,player,msg,ws){
   const p=room.players.find(x=>x.id===player);if(!p)return;
-  if(msg.type==='start'){if(player!==room.host)return error(ws,'Only the room host can start the game.');if(!start(room))return error(ws,'A game needs 3–6 players to start.');broadcast(room);return;}
+  if(msg.type==='start'){if(player!==room.host)return error(ws,'Only the room host can start the game.');if(!start(room))return error(ws,'A game needs 3–12 players to start.');broadcast(room);return;}
   if(msg.type==='action'){
     if(room.phase!=='actions'||room.players[room.turn]?.id!==player)return error(ws,'It is not your action turn.');
     const a=msg.action;
@@ -89,7 +90,15 @@ function handle(room,player,msg,ws){
       if(p.points<2)return error(ws,'You need at least 2 points to interfere.');if(!'ABC'.includes(msg.dial)||![-1,1].includes(msg.direction))return error(ws,'Choose a dial and a direction.');p.points-=2;const i='ABC'.indexOf(msg.dial);room.state[i]=(room.state[i]+msg.direction+4)%4;room.version++;room.history[room.version]=[...room.state];
       advance(room);
     } else if(a==='card'){
-      const hand=room.hands[player],idx=hand?.indexOf(msg.card);if(idx<0||!hand)return error(ws,'That card is not in your hand.');if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');const card=hand.splice(idx,1)[0];applyCard(room,card,msg.dial);p.points+=1;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and gains 1 point.`);const replacement=draw(room);if(replacement)hand.push(replacement);advance(room);
+      const hand=room.hands[player],idx=hand?.indexOf(msg.card);if(idx<0||!hand)return error(ws,'That card is not in your hand.');const card=hand[idx];
+      if(card==='Quantum Jump'){
+        const target=Number(msg.version);if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');if(!Number.isInteger(target)||target<0||target>=room.version)return error(ws,'Choose a previous version to restore.');
+        hand.splice(idx,1);const i='ABC'.indexOf(msg.dial);room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);p.points+=1;addLog(room,`${p.name} plays Quantum Jump on dial ${msg.dial}, restoring it to its Version ${target} position.`);
+      }else{
+        if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');
+        hand.splice(idx,1);applyCard(room,card,msg.dial);p.points+=1;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and gains 1 point.`);
+      }
+      const replacement=draw(room);if(replacement)hand.push(replacement);advance(room);
     } else return error(ws,'Unknown action.');
     broadcast(room);return;
   }
@@ -132,7 +141,7 @@ server.on('upgrade',(req,socket)=>{
     room=rooms.get(code);if(!room){if(id)return error(ws,'That room has closed. Create a new room.');room=blankRoom(code,null);rooms.set(code,room);}
     let p=room.players.find(x=>x.id===id);
     if(p){if(p.socket&&p.socket!==ws){p.socket.close();}p.socket=ws;p.name=name||p.name;player=p.id;}
-    else {if(id)return error(ws,'Your seat is no longer in this room.');if(room.phase!=='lobby')return error(ws,'This game has already started.');if(room.players.length>=6)return error(ws,'This room is full.');player=uid(12);p={id:player,name,points:0,socket:ws};room.players.push(p);if(!room.host)room.host=player;}
+    else {if(id)return error(ws,'Your seat is no longer in this room.');if(room.phase!=='lobby')return error(ws,'This game has already started.');if(room.players.length>=MAX_PLAYERS)return error(ws,'This room is full.');player=uid(12);p={id:player,name,points:0,socket:ws};room.players.push(p);if(!room.host)room.host=player;}
     send(ws,{type:'joined',id:player,code,token:player});broadcast(room);
   }
   function onFrame(chunk){ws.buffer=Buffer.concat([ws.buffer,chunk]);while(ws.buffer.length>=2){const b=ws.buffer;let len=b[1]&127,off=2;if(len===126){if(b.length<4)return;len=b.readUInt16BE(2);off=4;}else if(len===127){if(b.length<10)return;const big=b.readBigUInt64BE(2);if(big>1000000n)return ws.close();len=Number(big);off=10;}const masked=!!(b[1]&128);if(masked)off+=4;if(b.length<off+len)return;let payload=Buffer.from(b.subarray(off,off+len));if(masked){const mask=b.subarray(off-4,off);for(let i=0;i<payload.length;i++)payload[i]^=mask[i%4];}ws.buffer=b.subarray(off+len);const opcode=b[0]&15;if(opcode===8){ws.close();return;}if(opcode===9){socket.write(Buffer.from([0x8a,0]));continue;}if(opcode===1){try{const msg=JSON.parse(payload.toString());if(msg.type==='join')join(msg.code,msg.token,msg.name);else if(msg.type==='ping')continue;else if(room&&player)handle(room,player,msg,ws);else error(ws,'Join or create a room first.');}catch{error(ws,'Could not read that message.');}}}}
