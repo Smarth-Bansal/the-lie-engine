@@ -54,7 +54,7 @@ function start(room){
   room.round=1;
   room.state=[rand(4),rand(4),rand(4)];room.history=[[...room.state]];room.version=0;
   const copies=Math.max(3,Math.ceil((room.players.length*2+2)/names.length));room.deck=shuffled(names.flatMap(n=>Array(copies).fill(n)));room.discard=[];
-  const setup=[draw(room),draw(room)]; for(const card of setup)applyCard(room,card,'ABC'[rand(3)]);
+  const setup=[];while(setup.length<2){const card=draw(room);if(!card)break;if(card==='Quantum Jump'){room.deck=shuffled([...room.deck,card]);continue;}setup.push(card);}for(const card of setup)applyCard(room,card,'ABC'[rand(3)]);
   room.players.forEach(p=>{p.points=10;const first=randomClue(room,0);room.clues[p.id]=[first,randomClue(room,0,[first.dial]),randomClue(room,1)];room.hands[p.id]=[draw(room),draw(room)];room.verified[p.id]=[];});
   room.publicVersion=room.version;room.roundStart=room.version;room.turn=0;room.phase='actions';room.log=[];room.predictions={};room.earned={};room.winners=[];room.endReason=null;room.roundEnd=null;room.roomEvents=[];
   addLog(room,`Round 1 begins at public Version ${room.publicVersion}. ${room.players[0].name} takes the first turn.`);return true;
