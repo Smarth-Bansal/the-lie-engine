@@ -33,7 +33,7 @@ function serial(room, player) {
   return {
     code:room.code, phase:room.phase, round:room.round, endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
     publicVersion:room.publicVersion, roundStart:room.roundStart, roundEnd:room.roundEnd,
-    players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,host:p.id===room.host,connected:!!p.socket,ready:!!room.predictions[p.id]})),
+    players:room.players.map(p=>({id:p.id,name:p.name,points:p.id===player?p.points:undefined,host:p.id===room.host,connected:!!p.socket,ready:!!room.predictions[p.id]})),
     you:own?{id:own.id,name:own.name,points:own.points,host:own.id===room.host}:null,
     clues:own?room.clues[own.id]:[], hands:own?room.hands[own.id]:[],
     verified:own?room.verified[own.id]||[]:[], predictions:room.players.map(p=>({id:p.id,name:p.name,locked:!!room.predictions[p.id],earned:(room.phase==='reveal'||(room.phase==='finished'&&room.endReason==='points'))&&p.id===player?room.earned[p.id]||0:undefined})),
@@ -58,7 +58,7 @@ function start(room){
 }
 function roundStart(room){
   room.round++;room.predictions={};room.earned={};room.verified={};room.turn=0;room.publicVersion=room.version;room.roundStart=room.version;room.roundEnd=null;
-  const v1=Math.max(0,room.version-1),v2=room.version;
+  const v1=Math.max(0,room.version-2),v2=Math.max(0,room.version-1);
   for(const p of room.players){room.clues[p.id].push(randomClue(room,v2));if(v1!==v2)room.clues[p.id].push(randomClue(room,v1));}
   room.phase='actions';addLog(room,`Round ${room.round} begins at public Version ${room.publicVersion}. ${room.players[0].name} takes the first turn.`);
 }
