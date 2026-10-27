@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: the-lie-engine
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    numInstances: 1
