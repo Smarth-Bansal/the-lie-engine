@@ -58,7 +58,7 @@ function start(room){
   addLog(room,`Round 1 begins at public Version ${room.publicVersion}. ${room.players[0].name} takes the first turn.`);return true;
 }
 function roundStart(room){
-  room.round++;room.predictions={};room.earned={};room.verified={};room.turn=0;room.publicVersion=room.version;room.roundStart=room.version;room.roundEnd=null;
+  room.round++;room.predictions={};room.earned={};room.verified=Object.fromEntries(room.players.map(p=>[p.id,[]]));room.turn=0;room.publicVersion=room.version;room.roundStart=room.version;room.roundEnd=null;
   const v1=Math.max(0,room.version-2),v2=Math.max(0,room.version-1);
   for(const p of room.players){for(const version of (v1===v2?[v2]:[v1,v2])){const used=room.clues[p.id].filter(c=>c.version===version).map(c=>c.dial);const clue=randomClue(room,version,used);if(clue)room.clues[p.id].push(clue);}}
   room.phase='actions';addLog(room,`Round ${room.round} begins at public Version ${room.publicVersion}. ${room.players[0].name} takes the first turn.`);
@@ -84,7 +84,7 @@ function handle(room,player,msg,ws){
       if(room.roomEvents.some(e=>e.clue?.id===clue.id))return error(ws,'That clue is already public.');
       p.points+=2;room.roomEvents.push({id:uid(4),clue:{...clue,owner:p.name}});advance(room);
     } else if(a==='verify'){
-      if(p.points<1)return error(ws,'You need at least 1 point to verify.');const clue=room.clues[player]?.find(c=>c.id===msg.clueId);if(!clue)return error(ws,'Choose one of your clues first.');p.points--;const yes=room.state['ABC'.indexOf(clue.dial)]===clue.value;room.verified[player].unshift({clueId:clue.id,answer:yes});room.verified[player]=room.verified[player].slice(0,20);advance(room);
+      if(p.points<1)return error(ws,'You need at least 1 point to verify.');const clue=room.clues[player]?.find(c=>c.id===msg.clueId);if(!clue)return error(ws,'Choose one of your clues first.');p.points--;const yes=room.state['ABC'.indexOf(clue.dial)]===clue.value;room.verified[player].unshift({clueId:clue.id,answer:yes,round:room.round});room.verified[player]=room.verified[player].slice(0,20);advance(room);
     } else if(a==='interfere'){
       if(p.points<2)return error(ws,'You need at least 2 points to interfere.');if(!'ABC'.includes(msg.dial)||![-1,1].includes(msg.direction))return error(ws,'Choose a dial and a direction.');p.points-=2;const i='ABC'.indexOf(msg.dial);room.state[i]=(room.state[i]+msg.direction+4)%4;room.version++;room.history[room.version]=[...room.state];
       advance(room);
