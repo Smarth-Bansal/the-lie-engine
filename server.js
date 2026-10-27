@@ -34,6 +34,7 @@ function serial(room, player) {
   return {
     code:room.code, phase:room.phase, round:room.round, endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
     publicVersion:room.publicVersion, roundStart:room.roundStart, roundEnd:room.roundEnd,
+    finalState:room.phase==='finished'?[...room.state]:null, finalVersion:room.phase==='finished'?room.version:null,
     players:room.players.map(p=>({id:p.id,name:p.name,points:p.id===player?p.points:undefined,host:p.id===room.host,connected:!!p.socket,ready:!!room.predictions[p.id]})),
     you:own?{id:own.id,name:own.name,points:own.points,host:own.id===room.host}:null,
     clues:own?room.clues[own.id]:[], hands:own?room.hands[own.id]:[],
