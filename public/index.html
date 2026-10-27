@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101817"><meta name="description" content="A live multiplayer game of clues, secrets, and one perfect guess.">
+  <title>The Lie Engine — INTRAS</title><link rel="icon" href="/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="grain"></div>
+  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">L<span>·</span>E</span><span class="brand-name">THE LIE ENGINE<small>INTRAS · IIT KHARAGPUR</small></span></a><div class="top-status"><i id="connectionDot"></i><span id="connectionText">Connecting</span></div></header>
+  <main>
+    <section id="home" class="home-wrap">
+      <div class="hero-copy"><div class="eyebrow"><span class="eyebrow-line"></span> A game of clues, secrets &amp; one perfect guess</div><h1>History never lies.<br><em>The present does.</em></h1><p>Three hidden dials. A trail of honest clues. A room full of people trying to get one step ahead of the machine.</p>
+        <div class="hero-facts"><span><b>3–6</b> players</span><span><b>6</b> rounds max</span><span><b>25–40</b> minutes</span></div>
+      </div>
+      <div class="entry-card"><div class="card-kicker">STEP INTO THE ROOM</div><label for="playerName">YOUR NAME</label><input id="playerName" maxlength="18" placeholder="What should we call you?" autocomplete="nickname">
+        <button id="createBtn" class="btn btn-primary">Create a room <span>↗</span></button>
+        <div class="join-divider"><span></span> OR JOIN A ROOM <span></span></div><div class="join-row"><input id="roomCodeInput" maxlength="6" placeholder="ROOM CODE" aria-label="Room code" autocomplete="off"><button id="joinBtn" class="btn btn-quiet">Join <span>→</span></button></div>
+        <div id="homeError" class="error-msg"></div><div class="entry-foot"><span class="lock-icon">◈</span> Private clues stay private. No account needed.</div>
+      </div>
+      <div class="dial-art" aria-hidden="true"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="orbit orbit-c"></div><div class="dial dial-a"><span>A</span><b>?</b></div><div class="dial dial-b"><span>B</span><b>?</b></div><div class="dial dial-c"><span>C</span><b>?</b></div><div class="art-caption">CURRENT STATE: CLASSIFIED</div></div>
+      <div class="home-bottom"><span>DESIGNED FOR INTRAS · GAME THEORY SOCIETY</span><button id="rulesLink" class="text-link">How to play <span>↗</span></button></div>
+    </section>
+
+    <section id="room" class="room-wrap hidden">
+      <div class="room-head"><div><div class="eyebrow"><span class="eyebrow-line"></span><span id="roomEyebrow">WAITING ROOM</span></div><h1 id="roomTitle">The Engine Room</h1></div><div class="room-code"><small>ROOM CODE</small><button id="copyCode" aria-label="Copy room code"><strong id="roomCode">——</strong><span>▢</span></button></div></div>
+      <div class="room-grid">
+        <section class="main-panel">
+          <div id="lobbyPanel" class="panel lobby-panel"><div class="panel-head"><div><div class="section-label">THE PLAYERS</div><h2>Seats at the table <span id="playerCount">0 / 6</span></h2></div><div class="waiting-pulse"><i></i> WAITING FOR PLAYERS</div></div><div id="playersList" class="players-list"></div><div class="lobby-bottom"><p id="lobbyHint">The room needs at least three players to start.</p><button id="startBtn" class="btn btn-primary" disabled>Start the game <span>→</span></button></div></div>
+          <div id="gamePanel" class="hidden">
+            <div class="machine-panel panel"><div class="machine-top"><div><div class="section-label">THE LIE ENGINE</div><h2>The machine <span class="live-dot"></span></h2></div><div class="version-stamp"><small>PUBLIC VERSION</small><b id="versionNumber">V—</b></div></div><div class="dials"><div class="machine-dial"><span>DIAL A</span><b>?</b><small>UNKNOWN</small></div><div class="machine-dial"><span>DIAL B</span><b>?</b><small>UNKNOWN</small></div><div class="machine-dial"><span>DIAL C</span><b>?</b><small>UNKNOWN</small></div></div><div class="machine-caption"><span class="lock-icon">◈</span> The present is hidden. The clues are not.</div></div>
+            <div id="turnPanel" class="panel turn-panel"></div>
+            <div id="cluesPanel" class="panel clues-panel"><div class="panel-head"><div><div class="section-label">YOUR PRIVATE FILE</div><h2>Your clues <span id="clueCount"></span></h2></div><div class="private-tag">◈ ONLY YOU CAN SEE THIS</div></div><div id="cluesList" class="clues-list"></div><div id="verifyResult" class="verify-result hidden"></div></div>
+          </div>
+        </section>
+        <aside class="side-panel"><div class="panel standings-panel"><div class="section-label">THE TABLE</div><h2>Standings</h2><div id="standingsList" class="standings-list"></div><div class="points-note"><span>◎</span> Points are your score and your currency.</div></div><div class="panel feed-panel"><div class="panel-head"><div><div class="section-label">ROOM FEED</div><h2>Recent events</h2></div><span class="feed-live">LIVE</span></div><div id="feedList" class="feed-list"></div></div><div class="panel leave-panel"><button id="leaveBtn" class="text-link">Leave this room <span>↗</span></button></div></aside>
+      </div>
+      <div class="room-footer"><span>UP TO 6 ROUNDS · A PERFECT GUESS WINS INSTANTLY</span><button id="rulesLinkRoom" class="text-link">How to play <span>↗</span></button></div>
+    </section>
+  </main>
+  <div id="toast" class="toast"></div>
+  <dialog id="rulesDialog" class="rules-dialog"><div class="dialog-head"><div><div class="section-label">THE BRIEFING</div><h2>How to play</h2></div><button id="closeRules" class="close-btn" aria-label="Close">×</button></div><div class="rules-content"><p class="rules-lead">Read the past. Outsmart the present. Guess all three dials to win instantly.</p><div class="rule-block"><b>01 · Take one action</b><p>On your turn, reveal a clue for +2 points, privately verify a clue for −1, secretly interfere with one dial for −2, or play an Event Card for +1. Actions move the hidden engine.</p></div><div class="rule-block"><b>02 · Lock your prediction</b><p>Once every player has acted, secretly choose a value from 0–3 for A, B and C. Your guess stays hidden until everyone locks.</p></div><div class="rule-block"><b>03 · Read the result</b><p>One correct dial earns +1. Two earn +3. A perfect guess wins immediately. Otherwise, a hidden automatic event changes the machine before the next round.</p></div><div class="rule-block"><b>THE CLUES ARE REAL</b><p>Every clue records a true dial value from an earlier version. Interference and Event Cards change the machine, so old facts can go stale.</p></div><div class="rules-scoring"><span>3–6 PLAYERS</span><span>6 ROUNDS MAX</span><span>TIES SHARE THE WIN</span></div></div></dialog>
+  <script src="/app.js" defer></script>
+</body></html>
