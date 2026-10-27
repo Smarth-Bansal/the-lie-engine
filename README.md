@@ -1,6 +1,6 @@
 # The Lie Engine
 
-A real-time browser game for 3–6 players, based on the INTRAS rulebook. Players share a room code, take turns, compare historical clues, and privately predict the engine's three hidden dials.
+A real-time browser game for 3–12 players, based on the INTRAS rulebook. Players share a room code, take turns, compare historical clues, and privately predict the engine's three hidden dials.
 
 ## Run locally
 
@@ -10,7 +10,7 @@ Requires Node.js 20 or newer. The server has no third-party runtime dependencies
 npm start
 ```
 
-Open `http://localhost:3000`. Create a room, then share the six-character code. Three players are required before the host can start; six can join.
+Open `http://localhost:3000`. Create a room, then share the six-character code. Three players are required before the host can start; up to twelve can join.
 
 ## Deploy
 
@@ -25,7 +25,7 @@ The host's in-memory room state supports the intended single-instance game servi
 - At the start of rounds 2–6, each player receives clues from the two versions immediately before the round's current version (the current version itself is excluded).
 - A player never receives the same version/dial clue twice. New clues are shown separately from the collapsed archive of clues from earlier rounds.
 - All card changes and interference actions advance the hidden version once. The automatic event resolves after scoring unless a player wins instantly.
-- The 24-card deck uses three copies of the eight printed card types. `Quantum Jump` is defined here as a randomly chosen one-step shift forward or backward, while `Chaos Shift` chooses uniformly from any of the other three values. Both always change the target dial.
+- The shuffled Event Card deck scales with room size so every player starts with two cards. Playing `Quantum Jump` restores the chosen dial to its position in a previous version selected by the player; the other dials stay as they are. The result is recorded as a new version. Setup and automatic Quantum Jump events choose a dial and previous version at random. `Chaos Shift` chooses uniformly from any of the other three values.
 - Scores, clues, verification answers, the engine state, and locked predictions are held on the server; the engine state and card identities are never sent to clients.
 
 ## Operational scope
