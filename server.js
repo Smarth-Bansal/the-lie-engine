@@ -12,7 +12,7 @@ const mime = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8
 const rand = n => crypto.randomInt(n);
 const uid = n => crypto.randomBytes(n).toString('hex');
 const shuffled = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=rand(i+1);[b[i],b[j]]=[b[j],b[i]];} return b; };
-const blankRoom = (code, host) => ({code,host,adminSeat:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyCost:1,interfereCost:2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
+const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyCost:1,interfereCost:2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
 
 function applyCard(room, card, dial) {
   const i='ABC'.indexOf(dial), old=room.state[i]; let value;
@@ -31,21 +31,24 @@ function randomClue(room,version,usedDials=[],dealtRound=room.round){ const avai
 function addLog(room,text){room.log.push({text,at:Date.now()});room.log=room.log.slice(-40);}
 function addAdminLog(room,text){room.adminLog.unshift({text,at:Date.now()});room.adminLog=room.adminLog.slice(0,400);}
 function addAudit(room,{player='',clues='',action='',prediction='',points=''}={}){room.audit.push({round:room.round||0,player,clues,action,prediction,points,at:Date.now()});if(room.audit.length>4000)room.audit.splice(0,room.audit.length-4000);}
+function isAdmin(room,id){return Array.isArray(room.adminIds)?room.adminIds.includes(id):room.host===id;}
+function releaseAdminSeat(room,id){if(room.adminSeat?.id===id){room.spectators.push(room.adminSeat);room.adminSeat=null;}}
 function serial(room, player) {
-  const active=room.players.find(p=>p.id===player),spectator=room.spectators.find(p=>p.id===player),adminOnly=room.adminSeat?.id===player,own=active||spectator||(adminOnly?room.adminSeat:null),isAdmin=player===room.host;
+  const active=room.players.find(p=>p.id===player),spectator=room.spectators.find(p=>p.id===player),adminOnly=room.adminSeat?.id===player,own=active||spectator||(adminOnly?room.adminSeat:null),admin=isAdmin(room,player);
   return {
     code:room.code, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,verifyCost:room.verifyCost,interfereCost:room.interfereCost,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
     publicVersion:room.publicVersion, roundStart:room.roundStart, roundEnd:room.roundEnd,
     finalState:room.phase==='finished'?[...room.state]:null, finalVersion:room.phase==='finished'?room.version:null,
-    players:room.players.map(p=>({id:p.id,name:p.name,points:p.id===player||isAdmin?p.points:undefined,host:p.id===room.host,connected:!!p.socket,ready:!!room.predictions[p.id]})),
-    spectators:room.spectators.map(p=>({id:p.id,name:p.name,host:p.id===room.host,connected:!!p.socket})),
-    you:own?{id:own.id,name:own.name,points:own.points,host:isAdmin,admin:isAdmin,adminOnly,spectator:!!spectator}:null,
+    players:room.players.map(p=>({id:p.id,name:p.name,points:p.id===player||admin?p.points:undefined,host:isAdmin(room,p.id),admin:isAdmin(room,p.id),connected:!!p.socket,ready:!!room.predictions[p.id]})),
+    spectators:room.spectators.map(p=>({id:p.id,name:p.name,host:isAdmin(room,p.id),admin:isAdmin(room,p.id),connected:!!p.socket})),
+    admins:(room.adminIds||[]).map(id=>{const person=room.players.find(p=>p.id===id)||room.spectators.find(p=>p.id===id)||(room.adminSeat?.id===id?room.adminSeat:null);return person?{id,name:person.name,adminOnly:room.adminSeat?.id===id}:null}).filter(Boolean),
+    you:own?{id:own.id,name:own.name,points:own.points,host:admin,admin,adminOnly,spectator:!!spectator}:null,
     clues:active?room.clues[active.id]||[]:[], hands:active?room.hands[active.id]||[]:[],
     verified:active?room.verified[active.id]||[]:[], predictions:room.players.map(p=>({id:p.id,name:p.name,locked:!!room.predictions[p.id],earned:(room.phase==='reveal'||(room.phase==='finished'&&room.endReason==='points'))&&p.id===player?room.earned[p.id]||0:undefined})),
     log:room.log, winners:room.winners, deckCount:room.deck.length,
     canAct:room.phase==='actions'&&room.players[room.turn]?.id===player,
-    canStart:room.phase==='lobby'&&room.host===player&&room.players.length>=1,
-    actionIndex:room.turn, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:isAdmin?room.adminLog:[],adminAudit:isAdmin?room.audit:[],adminView:isAdmin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
+    canStart:room.phase==='lobby'&&admin&&room.players.length>=1,
+    actionIndex:room.turn, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:admin?room.adminLog:[],adminAudit:admin?room.audit:[],adminView:admin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
   };
 }
 function send(ws,obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
@@ -100,33 +103,46 @@ function scorePredictions(room){
 function handle(room,player,msg,ws){
   const p=room.players.find(x=>x.id===player);
   if(msg.type==='admin'){
-    if(player!==room.host)return error(ws,'Only the room host can use admin controls.');
+    if(!isAdmin(room,player))return error(ws,'Only an admin can use admin controls.');
     if(msg.action==='settings'){
       if(room.phase==='finished')return error(ws,'This game is complete.');
       const fields=['roundLimit','startingPoints','revealReward','verifyCost','interfereCost','cardReward','oneDialReward','twoDialReward'],updated={};
       for(const key of fields){const value=Number(msg[key]);const min=key==='roundLimit'?1:0,max=key==='roundLimit'?12:key==='startingPoints'?100:20;if(!Number.isInteger(value)||value<min||value>max)return error(ws,`Invalid value for ${key}.`);updated[key]=value;}
       Object.assign(room,updated);
-      const text=`Game values updated: ${room.roundLimit} rounds; start ${room.startingPoints}; reveal +${room.revealReward}; verify −${room.verifyCost}; interfere −${room.interfereCost}; card +${room.cardReward}; guesses +${room.oneDialReward}/+${room.twoDialReward}.`;addAdminLog(room,text);addAudit(room,{player:room.adminSeat?.name||'Room host',action:text});broadcast(room);return;
+      const text=`Game values updated: ${room.roundLimit} rounds; start ${room.startingPoints}; reveal +${room.revealReward}; verify −${room.verifyCost}; interfere −${room.interfereCost}; card +${room.cardReward}; guesses +${room.oneDialReward}/+${room.twoDialReward}.`;addAdminLog(room,text);addAudit(room,{player:room.adminSeat?.name||room.players.find(x=>x.id===player)?.name||'Admin',action:text});broadcast(room);return;
     }
-
+    if(msg.action==='adminRole'){
+      const action=msg.roleAction,target=String(msg.playerId||'');
+      if(action==='resign'){const name=room.adminSeat?.name||room.players.find(x=>x.id===player)?.name||room.spectators.find(x=>x.id===player)?.name||'An admin';releaseAdminSeat(room,player);room.adminIds=room.adminIds.filter(id=>id!==player);addAdminLog(room,`${name} left the admin role.`);addAudit(room,{player:name,action:'Left the admin role'});broadcast(room);return;}
+      const person=room.players.find(x=>x.id===target)||room.spectators.find(x=>x.id===target);
+      if(!person||target===player)return error(ws,'Choose another player or spectator.');
+      if(action==='grant'){if(!isAdmin(room,target))room.adminIds.push(target);}
+      else if(action==='revoke'){room.adminIds=room.adminIds.filter(id=>id!==target);}
+      else if(action==='transfer'){if(!isAdmin(room,target))room.adminIds.push(target);releaseAdminSeat(room,player);room.adminIds=room.adminIds.filter(id=>id!==player);}
+      else return error(ws,'Unknown admin role action.');
+      const text=action==='grant'?`${person.name} was made an admin.`:action==='revoke'?`${person.name} no longer has admin access.`:`Admin access transferred to ${person.name}.`;
+      addAdminLog(room,text);addAudit(room,{player:person.name,action:text});broadcast(room);return;
+    }
     if(msg.action==='spectate'||msg.action==='remove'){
-      const target=String(msg.playerId||'');if(!target||target===room.host)return error(ws,'The host cannot be removed or made a spectator.');
+      const target=String(msg.playerId||'');if(!target||target===player)return error(ws,'You cannot remove yourself through this control.');
       const moved=moveSeat(room,target,{spectate:msg.action==='spectate'});if(!moved)return error(ws,'That participant is no longer in the room.');if(msg.action==='remove'&&moved.socket){send(moved.socket,{type:'removed'});moved.socket.close();}
+      if(msg.action==='remove')room.adminIds=room.adminIds.filter(id=>id!==target);
       const text=msg.action==='spectate'?`${moved.name} was moved to spectators.`:`${moved.name} was removed from the room.`;addAdminLog(room,text);addAudit(room,{player:moved.name,action:text});broadcast(room);return;
     }
     return error(ws,'Unknown admin action.');
   }
   if(msg.type==='leave'){
-    if(room.adminSeat?.id===player){room.adminSeat=null;room.host=room.players[0]?.id||null;if(!room.host){rooms.delete(room.code);return;}broadcast(room);return;}
+    if(room.adminSeat?.id===player){room.adminIds=room.adminIds.filter(id=>id!==player);room.adminSeat=null;if(room.host===player)room.host=room.players[0]?.id||room.adminIds[0]||null;if(!room.players.length&&!room.spectators.length){rooms.delete(room.code);return;}broadcast(room);return;}
     const wasHost=player===room.host;const leaving=moveSeat(room,player);if(!leaving)return error(ws,'You are no longer in the room.');addAdminLog(room,`${leaving.name} left the room.`);addAudit(room,{player:leaving.name,action:'Left the room'});
-    if(wasHost){if(room.players.length)room.host=room.players[0].id;else{rooms.delete(room.code);return;}}
-    if(!room.players.length&&!room.spectators.length){rooms.delete(room.code);return;}
+    room.adminIds=room.adminIds.filter(id=>id!==player);
+    if(wasHost){if(room.players.length)room.host=room.players[0].id;else if(room.spectators.length||room.adminSeat)room.host=room.adminIds[0]||room.adminSeat?.id||null;else{rooms.delete(room.code);return;}}
+    if(!room.players.length&&!room.spectators.length&&!room.adminSeat){rooms.delete(room.code);return;}
     broadcast(room);return;
   }
-  if(msg.type==='start'&&player===room.host){if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
-  if(msg.type==='next'&&player===room.host&&!p){if(room.phase!=='reveal')return error(ws,'The next round is not ready.');roundStart(room);broadcast(room);return;}
+  if(msg.type==='start'&&isAdmin(room,player)){if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
+  if(msg.type==='next'&&isAdmin(room,player)&&!p){if(room.phase!=='reveal')return error(ws,'The next round is not ready.');roundStart(room);broadcast(room);return;}
   if(!p)return;
-  if(msg.type==='start'){if(player!==room.host)return error(ws,'Only the room host can start the game.');if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
+  if(msg.type==='start'){if(!isAdmin(room,player))return error(ws,'Only an admin can start the game.');if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
   if(msg.type==='action'){
     if(room.phase!=='actions'||room.players[room.turn]?.id!==player)return error(ws,'It is not your action turn.');
     const a=msg.action;
@@ -180,11 +196,11 @@ server.on('upgrade',(req,socket)=>{
     if(room&&player){const prior=room;const old=[...prior.players,...prior.spectators,...(prior.adminSeat?[prior.adminSeat]:[])].find(x=>x.id===player);if(old?.socket===ws)old.socket=null;broadcast(prior);}
     code=String(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);name=String(name||'').trim().slice(0,18);
     if(!/^[A-Z0-9]{4,6}$/.test(code)||name.length<1)return error(ws,'Enter a room code and a name.');
-    room=rooms.get(code);if(!room){if(id)return error(ws,'That room has closed. Create a new room.');room=blankRoom(code,null);rooms.set(code,room);}
+    room=rooms.get(code);const freshRoom=!room;if(!room){if(id)return error(ws,'That room has closed. Create a new room.');room=blankRoom(code,null);rooms.set(code,room);}
     let p=room.players.find(x=>x.id===id)||room.spectators.find(x=>x.id===id);
     if(room.adminSeat?.id===id){p=room.adminSeat;if(p.socket&&p.socket!==ws)p.socket.close();p.socket=ws;p.name=name||p.name;player=p.id;}
     else if(p){if(p.socket&&p.socket!==ws){p.socket.close();}p.socket=ws;p.name=name||p.name;player=p.id;}
-    else {if(id)return error(ws,'Your seat is no longer in this room.');if(adminOnly){if(room.host||room.players.length||room.spectators.length)return error(ws,'An admin-only room must be created as a new room.');player=uid(12);room.adminSeat={id:player,name,socket:ws,points:0};room.host=player;p=room.adminSeat;}else if(room.players.length+room.spectators.length>=24)return error(ws,'This room has reached its participant limit.');if(!adminOnly){player=uid(12);p={id:player,name,points:0,socket:ws};if(room.phase==='lobby'&&room.players.length<MAX_PLAYERS){room.players.push(p);if(!room.host)room.host=player;}else{room.spectators.push(p);}}}
+    else {if(id)return error(ws,'Your seat is no longer in this room.');if(adminOnly){if(!freshRoom||room.host||room.players.length||room.spectators.length)return error(ws,'An admin-only room must be created as a new room.');player=uid(12);room.adminSeat={id:player,name,socket:ws,points:0};room.host=player;room.adminIds.push(player);p=room.adminSeat;}else if(room.players.length+room.spectators.length>=24)return error(ws,'This room has reached its participant limit.');if(!adminOnly){player=uid(12);p={id:player,name,points:0,socket:ws};if(room.phase==='lobby'&&room.players.length<MAX_PLAYERS){room.players.push(p);if(!room.host){room.host=player;if(freshRoom)room.adminIds.push(player);}}else{room.spectators.push(p);}}}
     send(ws,{type:'joined',id:player,code,token:player,adminOnly:room.adminSeat?.id===player});broadcast(room);
   }
   function onFrame(chunk){ws.buffer=Buffer.concat([ws.buffer,chunk]);while(ws.buffer.length>=2){const b=ws.buffer;let len=b[1]&127,off=2;if(len===126){if(b.length<4)return;len=b.readUInt16BE(2);off=4;}else if(len===127){if(b.length<10)return;const big=b.readBigUInt64BE(2);if(big>1000000n)return ws.close();len=Number(big);off=10;}const masked=!!(b[1]&128);if(masked)off+=4;if(b.length<off+len)return;let payload=Buffer.from(b.subarray(off,off+len));if(masked){const mask=b.subarray(off-4,off);for(let i=0;i<payload.length;i++)payload[i]^=mask[i%4];}ws.buffer=b.subarray(off+len);const opcode=b[0]&15;if(opcode===8){ws.close();return;}if(opcode===9){socket.write(Buffer.from([0x8a,0]));continue;}if(opcode===1){try{const msg=JSON.parse(payload.toString());if(msg.type==='join')join(msg.code,msg.token,msg.name,msg.adminOnly);else if(msg.type==='ping')continue;else if(room&&player)handle(room,player,msg,ws);else error(ws,'Join or create a room first.');}catch{error(ws,'Could not read that message.');}}}}
