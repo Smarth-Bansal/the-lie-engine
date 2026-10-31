@@ -12,7 +12,7 @@ const mime = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8
 const rand = n => crypto.randomInt(n);
 const uid = n => crypto.randomBytes(n).toString('hex');
 const shuffled = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=rand(i+1);[b[i],b[j]]=[b[j],b[i]];} return b; };
-const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyCost:1,interfereCost:2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
+const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],lastAdminId:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyReward:-1,interfereReward:-2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
 
 function applyCard(room, card, dial) {
   const i='ABC'.indexOf(dial), old=room.state[i]; let value;
@@ -32,22 +32,29 @@ function addLog(room,text){room.log.push({text,at:Date.now()});room.log=room.log
 function addAdminLog(room,text){room.adminLog.unshift({text,at:Date.now()});room.adminLog=room.adminLog.slice(0,400);}
 function addAudit(room,{player='',clues='',action='',prediction='',points=''}={}){room.audit.push({round:room.round||0,player,clues,action,prediction,points,at:Date.now()});if(room.audit.length>4000)room.audit.splice(0,room.audit.length-4000);}
 function isAdmin(room,id){return Array.isArray(room.adminIds)?room.adminIds.includes(id):room.host===id;}
+const fmtPts=n=>n<0?`−${-n}`:`+${n}`;
+const pointsPhrase=n=>n<0?`loses ${-n} point${-n===1?'':'s'}`:n>0?`gains ${n} point${n===1?'':'s'}`:'keeps the same points';
+const canAfford=(p,reward)=>p.points+reward>=0;
+const everyone=room=>[...room.players,...room.spectators,...(room.adminSeat?[room.adminSeat]:[])];
+function dropAdmin(room,id){const had=room.adminIds.includes(id);room.adminIds=room.adminIds.filter(x=>x!==id);if(had&&!room.adminIds.length)room.lastAdminId=id;}
+// When nobody holds admin access, the last admin (or, if they have left the room, the first player) may start the game and continue rounds. This is not admin access.
+function caretaker(room){if((room.adminIds||[]).length)return null;const last=everyone(room).find(x=>x.id===room.lastAdminId);return last?last.id:(room.players[0]?.id||null);}
 function releaseAdminSeat(room,id){if(room.adminSeat?.id===id){room.spectators.push(room.adminSeat);room.adminSeat=null;}}
 function serial(room, player) {
-  const active=room.players.find(p=>p.id===player),spectator=room.spectators.find(p=>p.id===player),adminOnly=room.adminSeat?.id===player,own=active||spectator||(adminOnly?room.adminSeat:null),admin=isAdmin(room,player);
+  const active=room.players.find(p=>p.id===player),spectator=room.spectators.find(p=>p.id===player),adminOnly=room.adminSeat?.id===player,own=active||spectator||(adminOnly?room.adminSeat:null),admin=isAdmin(room,player),starterId=caretaker(room),isStarter=starterId===player,starterPerson=starterId?everyone(room).find(x=>x.id===starterId):null;
   return {
-    code:room.code, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,verifyCost:room.verifyCost,interfereCost:room.interfereCost,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
+    code:room.code, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,verifyReward:room.verifyReward,interfereReward:room.interfereReward,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
     publicVersion:room.publicVersion, roundStart:room.roundStart, roundEnd:room.roundEnd,
     finalState:room.phase==='finished'?[...room.state]:null, finalVersion:room.phase==='finished'?room.version:null,
     players:room.players.map(p=>({id:p.id,name:p.name,points:p.id===player||admin?p.points:undefined,host:isAdmin(room,p.id),admin:isAdmin(room,p.id),connected:!!p.socket,ready:!!room.predictions[p.id]})),
     spectators:room.spectators.map(p=>({id:p.id,name:p.name,host:isAdmin(room,p.id),admin:isAdmin(room,p.id),connected:!!p.socket})),
     admins:(room.adminIds||[]).map(id=>{const person=room.players.find(p=>p.id===id)||room.spectators.find(p=>p.id===id)||(room.adminSeat?.id===id?room.adminSeat:null);return person?{id,name:person.name,adminOnly:room.adminSeat?.id===id}:null}).filter(Boolean),
-    you:own?{id:own.id,name:own.name,points:own.points,host:admin,admin,adminOnly,spectator:!!spectator}:null,
+    you:own?{id:own.id,name:own.name,points:own.points,host:admin,admin,adminOnly,starter:isStarter,spectator:!!spectator}:null,
     clues:active?room.clues[active.id]||[]:[], hands:active?room.hands[active.id]||[]:[],
     verified:active?room.verified[active.id]||[]:[], predictions:room.players.map(p=>({id:p.id,name:p.name,locked:!!room.predictions[p.id],earned:(room.phase==='reveal'||(room.phase==='finished'&&room.endReason==='points'))&&p.id===player?room.earned[p.id]||0:undefined})),
     log:room.log, winners:room.winners, deckCount:room.deck.length,
     canAct:room.phase==='actions'&&room.players[room.turn]?.id===player,
-    canStart:room.phase==='lobby'&&admin&&room.players.length>=1,
+    canStart:room.phase==='lobby'&&(admin||isStarter)&&room.players.length>=1,noAdmin:!(room.adminIds||[]).length,starterName:starterPerson?.name||null,canNext:room.phase==='reveal'&&(!!active||admin||isStarter),canTakeSeat:room.phase==='lobby'&&!active&&(adminOnly||!!spectator)&&(admin||isStarter)&&room.players.length<MAX_PLAYERS,canStepOut:room.phase==='lobby'&&!!active&&admin,
     actionIndex:room.turn, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:admin?room.adminLog:[],adminAudit:admin?room.audit:[],adminView:admin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
   };
 }
@@ -95,7 +102,7 @@ function scorePredictions(room){
   room.phase='reveal';
   for(const {player:p} of results){const guess=room.predictions[p.id].values,actual=room.state,before=p.points,parts=['A','B','C'].map((dial,i)=>`${dial}: guessed ${guess[i]}, actual ${actual[i]} ${guess[i]===actual[i]?'✓':'✗'}`);addAudit(room,{player:p.name,prediction:parts.join(' · '),points:`${before} before scoring`});}
   if(perfect.length){room.endReason='perfect';room.winners=perfect.map(p=>p.id);room.roundEnd=room.version;room.phase='finished';addLog(room,`${perfect.map(p=>p.name).join(' and ')} ${perfect.length===1?'has':'have'} guessed all three dials. Version ${room.roundStart} → ${room.roundEnd}; no automatic event was applied.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
-  for(const {player:p,correct} of results){const before=p.points,earned=correct===2?room.twoDialReward:correct===1?room.oneDialReward:0;room.earned[p.id]=earned;p.points+=earned;addAudit(room,{player:p.name,points:`${before} → ${p.points} (${earned?`+${earned} for ${correct} correct dial${correct===1?'':'s'}`:'no prediction points'})`});}
+  for(const {player:p,correct} of results){const before=p.points,raw=correct===2?room.twoDialReward:correct===1?room.oneDialReward:0,earned=Math.max(raw,-p.points);room.earned[p.id]=earned;p.points+=earned;addAudit(room,{player:p.name,points:`${before} → ${p.points} (${earned?`${fmtPts(earned)} for ${correct} correct dial${correct===1?'':'s'}`:'no prediction points'})`});}
   const card=draw(room)||names[rand(names.length)],dial='ABC'[rand(3)],i='ABC'.indexOf(dial),old=room.state[i];applyCard(room,card,dial);room.roundEnd=room.version;addAudit(room,{player:'Automatic event',action:`${card} on ${dial}: ${old} → ${room.state[i]} (new V${room.version})`});
   addLog(room,`The automatic event advances the machine to Version ${room.roundEnd}. The round's hidden changes remain secret.`);
   if(room.round>=room.roundLimit){const high=Math.max(...room.players.map(p=>p.points));room.winners=room.players.filter(p=>p.points===high).map(p=>p.id);room.endReason='points';room.phase='finished';addLog(room,`${room.roundLimit} rounds complete. ${room.players.filter(p=>room.winners.includes(p.id)).map(p=>p.name).join(' and ')} ${room.winners.length===1?'wins':'share the win'} on points.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
@@ -106,19 +113,19 @@ function handle(room,player,msg,ws){
     if(!isAdmin(room,player))return error(ws,'Only an admin can use admin controls.');
     if(msg.action==='settings'){
       if(room.phase==='finished')return error(ws,'This game is complete.');
-      const fields=['roundLimit','startingPoints','revealReward','verifyCost','interfereCost','cardReward','oneDialReward','twoDialReward'],updated={};
-      for(const key of fields){const value=Number(msg[key]);const min=key==='roundLimit'?1:0,max=key==='roundLimit'?12:key==='startingPoints'?100:20;if(!Number.isInteger(value)||value<min||value>max)return error(ws,`Invalid value for ${key}.`);updated[key]=value;}
+      const fields=['roundLimit','startingPoints','revealReward','verifyReward','interfereReward','cardReward','oneDialReward','twoDialReward'],updated={};
+      for(const key of fields){const value=Number(msg[key]);const signed=['revealReward','verifyReward','interfereReward','cardReward','oneDialReward','twoDialReward'].includes(key),min=key==='roundLimit'?1:signed?-20:0,max=key==='roundLimit'?12:key==='startingPoints'?100:20;if(!Number.isInteger(value)||value<min||value>max)return error(ws,`Invalid value for ${key}.`);updated[key]=value;}
       Object.assign(room,updated);
-      const text=`Game values updated: ${room.roundLimit} rounds; start ${room.startingPoints}; reveal +${room.revealReward}; verify −${room.verifyCost}; interfere −${room.interfereCost}; card +${room.cardReward}; guesses +${room.oneDialReward}/+${room.twoDialReward}.`;addAdminLog(room,text);addAudit(room,{player:room.adminSeat?.name||room.players.find(x=>x.id===player)?.name||'Admin',action:text});broadcast(room);return;
+      const text=`Game values updated: ${room.roundLimit} rounds; start ${room.startingPoints}; reveal ${fmtPts(room.revealReward)}; verify ${fmtPts(room.verifyReward)}; interfere ${fmtPts(room.interfereReward)}; card ${fmtPts(room.cardReward)}; guesses ${fmtPts(room.oneDialReward)}/${fmtPts(room.twoDialReward)}.`;addAdminLog(room,text);addAudit(room,{player:room.adminSeat?.name||room.players.find(x=>x.id===player)?.name||'Admin',action:text});broadcast(room);return;
     }
     if(msg.action==='adminRole'){
       const action=msg.roleAction,target=String(msg.playerId||'');
-      if(action==='resign'){const name=room.adminSeat?.name||room.players.find(x=>x.id===player)?.name||room.spectators.find(x=>x.id===player)?.name||'An admin';releaseAdminSeat(room,player);room.adminIds=room.adminIds.filter(id=>id!==player);addAdminLog(room,`${name} left the admin role.`);addAudit(room,{player:name,action:'Left the admin role'});broadcast(room);return;}
+      if(action==='resign'){const name=room.adminSeat?.name||room.players.find(x=>x.id===player)?.name||room.spectators.find(x=>x.id===player)?.name||'An admin';releaseAdminSeat(room,player);dropAdmin(room,player);addAdminLog(room,`${name} left the admin role.`);addAudit(room,{player:name,action:'Left the admin role'});if(!room.adminIds.length)addLog(room,`${name} left the admin role. The room has no admin now. ${name} can still start the game and continue rounds, but has no other admin controls.`);broadcast(room);return;}
       const person=room.players.find(x=>x.id===target)||room.spectators.find(x=>x.id===target);
       if(!person||target===player)return error(ws,'Choose another player or spectator.');
       if(action==='grant'){if(!isAdmin(room,target))room.adminIds.push(target);}
-      else if(action==='revoke'){room.adminIds=room.adminIds.filter(id=>id!==target);}
-      else if(action==='transfer'){if(!isAdmin(room,target))room.adminIds.push(target);releaseAdminSeat(room,player);room.adminIds=room.adminIds.filter(id=>id!==player);}
+      else if(action==='revoke'){dropAdmin(room,target);}
+      else if(action==='transfer'){if(!isAdmin(room,target))room.adminIds.push(target);releaseAdminSeat(room,player);dropAdmin(room,player);}
       else return error(ws,'Unknown admin role action.');
       const text=action==='grant'?`${person.name} was made an admin.`:action==='revoke'?`${person.name} no longer has admin access.`:`Admin access transferred to ${person.name}.`;
       addAdminLog(room,text);addAudit(room,{player:person.name,action:text});broadcast(room);return;
@@ -126,43 +133,59 @@ function handle(room,player,msg,ws){
     if(msg.action==='spectate'||msg.action==='remove'){
       const target=String(msg.playerId||'');if(!target||target===player)return error(ws,'You cannot remove yourself through this control.');
       const moved=moveSeat(room,target,{spectate:msg.action==='spectate'});if(!moved)return error(ws,'That participant is no longer in the room.');if(msg.action==='remove'&&moved.socket){send(moved.socket,{type:'removed'});moved.socket.close();}
-      if(msg.action==='remove')room.adminIds=room.adminIds.filter(id=>id!==target);
+      if(msg.action==='remove')dropAdmin(room,target);
       const text=msg.action==='spectate'?`${moved.name} was moved to spectators.`:`${moved.name} was removed from the room.`;addAdminLog(room,text);addAudit(room,{player:moved.name,action:text});broadcast(room);return;
     }
     return error(ws,'Unknown admin action.');
   }
   if(msg.type==='leave'){
-    if(room.adminSeat?.id===player){room.adminIds=room.adminIds.filter(id=>id!==player);room.adminSeat=null;if(room.host===player)room.host=room.players[0]?.id||room.adminIds[0]||null;if(!room.players.length&&!room.spectators.length){rooms.delete(room.code);return;}broadcast(room);return;}
+    if(room.adminSeat?.id===player){dropAdmin(room,player);room.adminSeat=null;if(room.host===player)room.host=room.players[0]?.id||room.adminIds[0]||null;if(!room.players.length&&!room.spectators.length){rooms.delete(room.code);return;}broadcast(room);return;}
     const wasHost=player===room.host;const leaving=moveSeat(room,player);if(!leaving)return error(ws,'You are no longer in the room.');addAdminLog(room,`${leaving.name} left the room.`);addAudit(room,{player:leaving.name,action:'Left the room'});
-    room.adminIds=room.adminIds.filter(id=>id!==player);
+    dropAdmin(room,player);
     if(wasHost){if(room.players.length)room.host=room.players[0].id;else if(room.spectators.length||room.adminSeat)room.host=room.adminIds[0]||room.adminSeat?.id||null;else{rooms.delete(room.code);return;}}
     if(!room.players.length&&!room.spectators.length&&!room.adminSeat){rooms.delete(room.code);return;}
     broadcast(room);return;
   }
-  if(msg.type==='start'&&isAdmin(room,player)){if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
-  if(msg.type==='next'&&isAdmin(room,player)&&!p){if(room.phase!=='reveal')return error(ws,'The next round is not ready.');roundStart(room);broadcast(room);return;}
+  const runner=isAdmin(room,player)||caretaker(room)===player;
+  if(msg.type==='start'){if(!runner)return error(ws,'Only an admin can start the game.');if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
+  if(msg.type==='seat'){
+    if(room.phase!=='lobby')return error(ws,'Seats can only be changed before the game starts.');
+    if(msg.action==='play'){
+      if(p)return error(ws,'You already have a seat.');if(!runner)return error(ws,'Only an admin can take a seat this way.');if(room.players.length>=MAX_PLAYERS)return error(ws,'All seats are taken.');
+      let person=null;if(room.adminSeat?.id===player){person=room.adminSeat;room.adminSeat=null;}else{const i=room.spectators.findIndex(x=>x.id===player);if(i>=0)[person]=room.spectators.splice(i,1);}
+      if(!person)return error(ws,'You are no longer in the room.');
+      person.points=0;room.players.push(person);const text=`${person.name} joined as a player.`;addAdminLog(room,text);addAudit(room,{player:person.name,action:text});broadcast(room);return;
+    }
+    if(msg.action==='watch'){
+      if(!p)return error(ws,'You are not in a seat.');if(!isAdmin(room,player))return error(ws,'Only an admin can step out of a seat.');
+      const person=moveSeat(room,player);if(!person)return error(ws,'You are no longer in the room.');
+      if(!room.adminSeat)room.adminSeat=person;else room.spectators.push(person);
+      const text=`${person.name} stepped out of the game.`;addAdminLog(room,text);addAudit(room,{player:person.name,action:text});broadcast(room);return;
+    }
+    return error(ws,'Unknown seat action.');
+  }
+  if(msg.type==='next'&&runner&&!p){if(room.phase!=='reveal')return error(ws,'The next round is not ready.');roundStart(room);broadcast(room);return;}
   if(!p)return;
-  if(msg.type==='start'){if(!isAdmin(room,player))return error(ws,'Only an admin can start the game.');if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
   if(msg.type==='action'){
     if(room.phase!=='actions'||room.players[room.turn]?.id!==player)return error(ws,'It is not your action turn.');
     const a=msg.action;
     if(a==='reveal'){
       const clue=room.clues[player]?.find(c=>c.id===msg.clueId&&c.dealtRound===room.round);if(!clue)return error(ws,'Choose a fresh clue from this round to reveal.');
       if(room.roomEvents.some(e=>e.clue?.id===clue.id))return error(ws,'That clue is already public.');
-      const before=p.points;p.points+=room.revealReward;room.roomEvents.push({id:uid(4),clue:{...clue,owner:p.name}});const text=`Revealed V${clue.version}, dial ${clue.dial} = ${clue.value}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
+      if(!canAfford(p,room.revealReward))return error(ws,`Revealing costs ${-room.revealReward} points and you have ${p.points}.`);const before=p.points;p.points+=room.revealReward;room.roomEvents.push({id:uid(4),clue:{...clue,owner:p.name}});const text=`Revealed V${clue.version}, dial ${clue.dial} = ${clue.value}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='verify'){
-      if(p.points<room.verifyCost)return error(ws,`You need at least ${room.verifyCost} points to verify.`);const clue=room.clues[player]?.find(c=>c.id===msg.clueId);if(!clue)return error(ws,'Choose one of your clues first.');const before=p.points;p.points-=room.verifyCost;const yes=room.state['ABC'.indexOf(clue.dial)]===clue.value;room.verified[player].unshift({clueId:clue.id,answer:yes,round:room.round});room.verified[player]=room.verified[player].slice(0,20);const text=`Verified V${clue.version}, dial ${clue.dial} = ${clue.value}: ${yes?'MATCH':'NO MATCH'}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
+      if(!canAfford(p,room.verifyReward))return error(ws,`You need at least ${-room.verifyReward} points to verify.`);const clue=room.clues[player]?.find(c=>c.id===msg.clueId);if(!clue)return error(ws,'Choose one of your clues first.');const before=p.points;p.points+=room.verifyReward;const yes=room.state['ABC'.indexOf(clue.dial)]===clue.value;room.verified[player].unshift({clueId:clue.id,answer:yes,round:room.round});room.verified[player]=room.verified[player].slice(0,20);const text=`Verified V${clue.version}, dial ${clue.dial} = ${clue.value}: ${yes?'MATCH':'NO MATCH'}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='interfere'){
-      if(p.points<room.interfereCost)return error(ws,`You need at least ${room.interfereCost} points to interfere.`);if(!'ABC'.includes(msg.dial)||![-1,1].includes(msg.direction))return error(ws,'Choose a dial and a direction.');const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];p.points-=room.interfereCost;room.state[i]=(room.state[i]+msg.direction+4)%4;room.version++;room.history[room.version]=[...room.state];
+      if(!canAfford(p,room.interfereReward))return error(ws,`You need at least ${-room.interfereReward} points to interfere.`);if(!'ABC'.includes(msg.dial)||![-1,1].includes(msg.direction))return error(ws,'Choose a dial and a direction.');const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];p.points+=room.interfereReward;room.state[i]=(room.state[i]+msg.direction+4)%4;room.version++;room.history[room.version]=[...room.state];
       const text=`Interfered with dial ${msg.dial}: ${old} → ${room.state[i]} (Version ${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='card'){
-      const hand=room.hands[player],idx=hand?.indexOf(msg.card);if(idx<0||!hand)return error(ws,'That card is not in your hand.');const card=hand[idx];
+      const hand=room.hands[player],idx=hand?.indexOf(msg.card);if(idx<0||!hand)return error(ws,'That card is not in your hand.');const card=hand[idx];if(!canAfford(p,room.cardReward))return error(ws,`Playing a card costs ${-room.cardReward} points and you have ${p.points}.`);
       if(card==='Quantum Jump'){
         const target=Number(msg.version);if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');if(!Number.isInteger(target)||target<0||target>=room.version)return error(ws,'Choose a previous version to restore.');
-        const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];hand.splice(idx,1);room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);p.points+=room.cardReward;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and gains ${room.cardReward} point(s).`);const text=`Played Quantum Jump on ${msg.dial}: ${old} → ${room.state[i]} (restored V${target}, new V${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});
+        const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];hand.splice(idx,1);room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);p.points+=room.cardReward;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and ${pointsPhrase(room.cardReward)}.`);const text=`Played Quantum Jump on ${msg.dial}: ${old} → ${room.state[i]} (restored V${target}, new V${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});
       }else{
         if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');
-        const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];hand.splice(idx,1);applyCard(room,card,msg.dial);p.points+=room.cardReward;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and gains ${room.cardReward} point(s).`);const text=`Played ${card} on ${msg.dial}: ${old} → ${room.state[i]} (new V${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});
+        const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];hand.splice(idx,1);applyCard(room,card,msg.dial);p.points+=room.cardReward;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and ${pointsPhrase(room.cardReward)}.`);const text=`Played ${card} on ${msg.dial}: ${old} → ${room.state[i]} (new V${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});
       }
       const replacement=draw(room);if(replacement){hand.push(replacement);addAudit(room,{player:p.name,action:`Replacement card dealt: ${replacement}`});}advance(room);
     } else return error(ws,'Unknown action.');
