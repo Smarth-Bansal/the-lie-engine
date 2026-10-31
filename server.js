@@ -44,7 +44,7 @@ function serial(room, player) {
     verified:active?room.verified[active.id]||[]:[], predictions:room.players.map(p=>({id:p.id,name:p.name,locked:!!room.predictions[p.id],earned:(room.phase==='reveal'||(room.phase==='finished'&&room.endReason==='points'))&&p.id===player?room.earned[p.id]||0:undefined})),
     log:room.log, winners:room.winners, deckCount:room.deck.length,
     canAct:room.phase==='actions'&&room.players[room.turn]?.id===player,
-    canStart:room.phase==='lobby'&&room.host===player&&room.players.length>=3,
+    canStart:room.phase==='lobby'&&room.host===player&&room.players.length>=1,
     actionIndex:room.turn, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:isAdmin?room.adminLog:[],adminAudit:isAdmin?room.audit:[],adminView:isAdmin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,history:room.history.map((values,version)=>({version,values:[...values]})),players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
   };
 }
@@ -71,7 +71,7 @@ function moveSeat(room,id,{spectate=false}={}){
   return null;
 }
 function start(room){
-  if(room.players.length<3||room.players.length>MAX_PLAYERS||room.phase!=='lobby')return false;
+  if(room.players.length<1||room.players.length>MAX_PLAYERS||room.phase!=='lobby')return false;
   room.round=1;
   room.state=[rand(4),rand(4),rand(4)];room.history=[[...room.state]];room.version=0;
   const copies=Math.max(3,Math.ceil((room.players.length*2+2)/names.length));room.deck=shuffled(names.flatMap(n=>Array(copies).fill(n)));room.discard=[];
@@ -124,10 +124,10 @@ function handle(room,player,msg,ws){
     if(!room.players.length&&!room.spectators.length){rooms.delete(room.code);return;}
     broadcast(room);return;
   }
-  if(msg.type==='start'&&player===room.host){if(!start(room))return error(ws,'A game needs 3–12 players to start.');broadcast(room);return;}
+  if(msg.type==='start'&&player===room.host){if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
   if(msg.type==='next'&&player===room.host&&!p){if(room.phase!=='reveal')return error(ws,'The next round is not ready.');roundStart(room);broadcast(room);return;}
   if(!p)return;
-  if(msg.type==='start'){if(player!==room.host)return error(ws,'Only the room host can start the game.');if(!start(room))return error(ws,'A game needs 3–12 players to start.');broadcast(room);return;}
+  if(msg.type==='start'){if(player!==room.host)return error(ws,'Only the room host can start the game.');if(!start(room))return error(ws,'A game needs at least one active player and no more than 12.');broadcast(room);return;}
   if(msg.type==='action'){
     if(room.phase!=='actions'||room.players[room.turn]?.id!==player)return error(ws,'It is not your action turn.');
     const a=msg.action;
