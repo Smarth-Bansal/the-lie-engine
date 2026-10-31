@@ -86,7 +86,8 @@ function bindActionForm(){
   }
   let dial=null,dir=null,card=null,targetVersion=null;const quantum=()=>card!==null&&state.hands[card]==='Quantum Jump';
   const update=()=>{if(pendingAction==='card'){$('#versionTargets').classList.toggle('hidden',!quantum());$('#submitAction').disabled=card===null||!dial||(quantum()&&targetVersion===null)}else $('#submitAction').disabled=!(dial&&dir)};
-  document.querySelectorAll(pendingAction==='card'?'#dialTargets [data-dial]':'[data-dial]').forEach(b=>b.onclick=()=>{dial=b.dataset.dial;document.querySelectorAll('#dialTargets [data-dial]').forEach(x=>x.classList.toggle('selected',x===b));update()});
+  const dialButtons=document.querySelectorAll('#turnPanel .action-subform [data-dial]');
+  dialButtons.forEach(b=>b.onclick=()=>{dial=b.dataset.dial;dialButtons.forEach(x=>{const chosen=x===b;x.classList.toggle('selected',chosen);x.setAttribute('aria-pressed',String(chosen))});update()});
   document.querySelectorAll('[data-version]').forEach(b=>b.onclick=()=>{targetVersion=Number(b.dataset.version);document.querySelectorAll('[data-version]').forEach(x=>x.classList.toggle('selected',x===b));update()});
   document.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>{dir=Number(b.dataset.dir);document.querySelectorAll('[data-dir]').forEach(x=>x.classList.toggle('selected',x===b));update()});
   document.querySelectorAll('[data-card]').forEach(b=>b.onclick=()=>{card=Number(b.dataset.card);document.querySelectorAll('[data-card]').forEach(x=>x.classList.toggle('selected',x===b));update()});
