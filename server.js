@@ -45,7 +45,7 @@ function serial(room, player) {
     log:room.log, winners:room.winners, deckCount:room.deck.length,
     canAct:room.phase==='actions'&&room.players[room.turn]?.id===player,
     canStart:room.phase==='lobby'&&room.host===player&&room.players.length>=1,
-    actionIndex:room.turn, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:isAdmin?room.adminLog:[],adminAudit:isAdmin?room.audit:[],adminView:isAdmin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,history:room.history.map((values,version)=>({version,values:[...values]})),players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
+    actionIndex:room.turn, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:isAdmin?room.adminLog:[],adminAudit:isAdmin?room.audit:[],adminView:isAdmin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
   };
 }
 function send(ws,obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
@@ -108,8 +108,7 @@ function handle(room,player,msg,ws){
       Object.assign(room,updated);
       const text=`Game values updated: ${room.roundLimit} rounds; start ${room.startingPoints}; reveal +${room.revealReward}; verify −${room.verifyCost}; interfere −${room.interfereCost}; card +${room.cardReward}; guesses +${room.oneDialReward}/+${room.twoDialReward}.`;addAdminLog(room,text);addAudit(room,{player:room.adminSeat?.name||'Room host',action:text});broadcast(room);return;
     }
-    if(msg.action==='engine'){if(!room.state||room.phase==='finished')return error(ws,'The engine is not editable now.');if(!Array.isArray(msg.values)||msg.values.length!==3||msg.values.some(v=>!Number.isInteger(v)||v<0||v>3))return error(ws,'Choose dial values from 0 to 3.');const before=[...room.state];room.state=[...msg.values];room.version++;room.history[room.version]=[...room.state];if(room.phase==='reveal')room.roundEnd=room.version;addLog(room,'The room admin adjusted the engine.');const text=`Engine set from A ${before[0]}, B ${before[1]}, C ${before[2]} to A ${msg.values[0]}, B ${msg.values[1]}, C ${msg.values[2]} (Version ${room.version})`;addAdminLog(room,`Admin ${text}.`);addAudit(room,{player:room.adminSeat?.name||'Room host',action:text});broadcast(room);return;
-    }
+
     if(msg.action==='spectate'||msg.action==='remove'){
       const target=String(msg.playerId||'');if(!target||target===room.host)return error(ws,'The host cannot be removed or made a spectator.');
       const moved=moveSeat(room,target,{spectate:msg.action==='spectate'});if(!moved)return error(ws,'That participant is no longer in the room.');if(msg.action==='remove'&&moved.socket){send(moved.socket,{type:'removed'});moved.socket.close();}
