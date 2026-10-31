@@ -10,7 +10,7 @@ Requires Node.js 20 or newer. The server has no third-party runtime dependencies
 npm start
 ```
 
-Open `http://localhost:3000`. Create a room, then share the six-character code. The admin can start with one active player; up to twelve can play. Late arrivals can watch as spectators, and each new round rotates the first turn to the next active player.
+Open `http://localhost:3000`. Create a room, then share the six-character code. The admin can start with one active player; up to twelve can play. Late arrivals can watch as spectators, and each new round rotates the first turn to the next active player, and the turn order wraps around the table so every active player acts once per round.
 
 ## Deploy
 

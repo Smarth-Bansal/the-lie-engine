@@ -8,11 +8,11 @@ const ROOT = path.join(__dirname, 'public');
 const rooms = new Map();
 const MAX_PLAYERS = 12;
 const names = ['Forward Pulse','Reverse Pulse','Double Pulse','Chaos Shift','Overload','Reset Signal','Mirror Flip','Quantum Jump'];
-const mime = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
+const mime = {'.png':'image/png','.ico':'image/x-icon','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
 const rand = n => crypto.randomInt(n);
 const uid = n => crypto.randomBytes(n).toString('hex');
 const shuffled = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=rand(i+1);[b[i],b[j]]=[b[j],b[i]];} return b; };
-const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],lastAdminId:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyReward:-1,interfereReward:-2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
+const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],lastAdminId:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyReward:-1,interfereReward:-2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,acted:0,order:[],roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
 
 function applyCard(room, card, dial) {
   const i='ABC'.indexOf(dial), old=room.state[i]; let value;
@@ -55,24 +55,27 @@ function serial(room, player) {
     log:room.log, winners:room.winners, deckCount:room.deck.length,
     canAct:room.phase==='actions'&&room.players[room.turn]?.id===player,
     canStart:room.phase==='lobby'&&(admin||isStarter)&&room.players.length>=1,noAdmin:!(room.adminIds||[]).length,starterName:starterPerson?.name||null,canNext:room.phase==='reveal'&&(!!active||admin||isStarter),canTakeSeat:room.phase==='lobby'&&!active&&(adminOnly||!!spectator)&&(admin||isStarter)&&room.players.length<MAX_PLAYERS,canStepOut:room.phase==='lobby'&&!!active&&admin,
-    actionIndex:room.turn, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:admin?room.adminLog:[],adminAudit:admin?room.audit:[],adminView:admin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
+    actionIndex:room.acted, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:admin?room.adminLog:[],adminAudit:admin?room.audit:[],adminView:admin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
   };
 }
 function send(ws,obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
 function broadcast(room){ for(const p of [...room.players,...room.spectators,...(room.adminSeat?[room.adminSeat]:[])]) if(p.socket) send(p.socket,{type:'state',state:serial(room,p.id)}); }
 function error(ws,message){send(ws,{type:'error',message});}
-function advance(room){ room.turn++; if(room.turn>=room.players.length){room.phase='predict';addLog(room,'All actions are in. Lock your three-dial prediction.');} }
+// Each round has a fixed turn order that starts at roundStarter and wraps around the table, so every active player acts exactly once.
+function syncTurn(room){const i=room.players.findIndex(p=>p.id===room.order[room.acted]);room.turn=i<0?room.players.length:i;}
+function beginRound(room){const n=room.players.length;room.order=n?Array.from({length:n},(_,i)=>room.players[(room.roundStarter+i)%n].id):[];room.acted=0;syncTurn(room);}
+function advance(room){room.acted++;syncTurn(room);if(room.acted>=room.order.length){room.phase='predict';addLog(room,'All actions are in. Lock your three-dial prediction.');}}
 function moveSeat(room,id,{spectate=false}={}){
   const index=room.players.findIndex(p=>p.id===id);
   if(index>=0){
     const [p]=room.players.splice(index,1);
-    if(index<room.turn)room.turn--;
+    const oi=room.order.indexOf(id);if(oi>=0){room.order.splice(oi,1);if(oi<room.acted)room.acted--;}
     if(index<room.roundStarter)room.roundStarter--;
     if(spectate)room.spectators.push(p);
     else{delete room.clues[id];delete room.hands[id];delete room.verified[id];}
     delete room.predictions[id];delete room.earned[id];
     room.roundStarter=room.players.length?((room.roundStarter%room.players.length)+room.players.length)%room.players.length:0;
-    if(room.phase==='actions'&&room.turn>=room.players.length){room.turn=0;room.phase='predict';addLog(room,'All remaining players have acted. Lock your prediction.');}
+    syncTurn(room);if(room.phase==='actions'&&room.acted>=room.order.length){room.phase='predict';addLog(room,'All remaining players have acted. Lock your prediction.');}
     if(room.phase==='predict'&&room.players.length&&room.players.every(x=>room.predictions[x.id]))scorePredictions(room);
     return p;
   }
@@ -87,11 +90,11 @@ function start(room){
   const copies=Math.max(3,Math.ceil((room.players.length*2+2)/names.length));room.deck=shuffled(names.flatMap(n=>Array(copies).fill(n)));room.discard=[];
   const setup=[];while(setup.length<2){const card=draw(room);if(!card)break;if(card==='Quantum Jump'){room.deck=shuffled([...room.deck,card]);continue;}setup.push(card);}for(const card of setup)applyCard(room,card,'ABC'[rand(3)]);
   room.audit=[];room.players.forEach(p=>{p.points=room.startingPoints;const first=randomClue(room,0);room.clues[p.id]=[first,randomClue(room,0,[first.dial]),randomClue(room,1)];room.hands[p.id]=[draw(room),draw(room)];room.verified[p.id]=[];for(const clue of room.clues[p.id])addAudit(room,{player:p.name,clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});addAudit(room,{player:p.name,action:`Starting hand dealt: ${room.hands[p.id].join(', ')}`,points:`${p.points} starting points`});});
-  room.publicVersion=room.version;room.roundStart=room.version;room.roundStarter=0;room.turn=0;room.phase='actions';room.log=[];room.predictions={};room.earned={};room.winners=[];room.endReason=null;room.roundEnd=null;room.roomEvents=[];
+  room.publicVersion=room.version;room.roundStart=room.version;room.roundStarter=0;room.phase='actions';beginRound(room);room.log=[];room.predictions={};room.earned={};room.winners=[];room.endReason=null;room.roundEnd=null;room.roomEvents=[];
   addLog(room,`Round 1 begins at public Version ${room.publicVersion}. ${room.players[room.turn].name} takes the first turn.`);addAdminLog(room,`Game started: ${room.players.length} players, ${room.roundLimit} rounds.`);addAudit(room,{player:room.adminSeat?.name||'Room host',action:`Game started · ${room.players.length} players · ${room.roundLimit} rounds · first turn: ${room.players[room.turn].name}`});return true;
 }
 function roundStart(room){
-  room.round++;room.predictions={};room.earned={};room.verified=Object.fromEntries(room.players.map(p=>[p.id,[]]));room.roundStarter=(room.roundStarter+1)%room.players.length;room.turn=room.roundStarter;room.publicVersion=room.version;room.roundStart=room.version;room.roundEnd=null;
+  room.round++;room.predictions={};room.earned={};room.verified=Object.fromEntries(room.players.map(p=>[p.id,[]]));room.roundStarter=(room.roundStarter+1)%room.players.length;beginRound(room);room.publicVersion=room.version;room.roundStart=room.version;room.roundEnd=null;
   const v1=Math.max(0,room.version-2),v2=Math.max(0,room.version-1);
   for(const p of room.players){for(const version of (v1===v2?[v2]:[v1,v2])){const used=room.clues[p.id].filter(c=>c.version===version).map(c=>c.dial);const clue=randomClue(room,version,used);if(clue){room.clues[p.id].push(clue);addAudit(room,{player:p.name,clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});}}}
   room.phase='actions';addLog(room,`Round ${room.round} begins at public Version ${room.publicVersion}. ${room.players[room.turn].name} takes the first turn.`);addAudit(room,{action:`Round begins · public V${room.publicVersion} · first turn: ${room.players[room.turn].name}`});
@@ -221,7 +224,7 @@ server.on('upgrade',(req,socket)=>{
     if(!/^[A-Z0-9]{4,6}$/.test(code)||name.length<1)return error(ws,'Enter a room code and a name.');
     room=rooms.get(code);const freshRoom=!room;if(!room){if(id)return error(ws,'That room has closed. Create a new room.');room=blankRoom(code,null);rooms.set(code,room);}
     let p=room.players.find(x=>x.id===id)||room.spectators.find(x=>x.id===id);
-    if(room.adminSeat?.id===id){p=room.adminSeat;if(p.socket&&p.socket!==ws)p.socket.close();p.socket=ws;p.name=name||p.name;player=p.id;}
+    if(id&&room.adminSeat?.id===id){p=room.adminSeat;if(p.socket&&p.socket!==ws)p.socket.close();p.socket=ws;p.name=name||p.name;player=p.id;}
     else if(p){if(p.socket&&p.socket!==ws){p.socket.close();}p.socket=ws;p.name=name||p.name;player=p.id;}
     else {if(id)return error(ws,'Your seat is no longer in this room.');if(adminOnly){if(!freshRoom||room.host||room.players.length||room.spectators.length)return error(ws,'An admin-only room must be created as a new room.');player=uid(12);room.adminSeat={id:player,name,socket:ws,points:0};room.host=player;room.adminIds.push(player);p=room.adminSeat;}else if(room.players.length+room.spectators.length>=24)return error(ws,'This room has reached its participant limit.');if(!adminOnly){player=uid(12);p={id:player,name,points:0,socket:ws};if(room.phase==='lobby'&&room.players.length<MAX_PLAYERS){room.players.push(p);if(!room.host){room.host=player;if(freshRoom)room.adminIds.push(player);}}else{room.spectators.push(p);}}}
     send(ws,{type:'joined',id:player,code,token:player,adminOnly:room.adminSeat?.id===player});broadcast(room);
