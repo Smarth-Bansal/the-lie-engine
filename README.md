@@ -10,7 +10,7 @@ Requires Node.js 20 or newer. The server has no third-party runtime dependencies
 npm start
 ```
 
-Open `http://localhost:3000`. Create a room, then share the six-character code. Three players are required before the host can start; up to twelve can join.
+Open `http://localhost:3000`. Create a room, then share the six-character code. Three players are required before the host can start; up to twelve can play. Late arrivals can watch as spectators, and each new round rotates the first turn to the next active player.
 
 ## Deploy
 
@@ -22,12 +22,12 @@ The host's in-memory room state supports the intended single-instance game servi
 
 - Version 0 starts with a random state; two setup cards create Versions 1 and 2. The public label is held at the round's starting version.
 - Historical clues are generated from the actual stored state for that version. Each player starts with two Version 0 clues and one Version 1 clue.
-- At the start of rounds 2–6, each player receives clues from the two versions immediately before the round's current version (the current version itself is excluded).
-- A player never receives the same version/dial clue twice. New clues are shown separately from the collapsed archive of clues from earlier rounds.
+- At the start of rounds 2–12, each player receives clues from the two versions immediately before the round's current version (the current version itself is excluded).
+- A player never receives the same version/dial clue twice. New clues are shown separately from the collapsed archive of clues from earlier rounds; only fresh clues from the current round can be revealed.
 - All card changes and interference actions advance the hidden version once. The automatic event resolves after scoring unless a player wins instantly.
-- The shuffled Event Card deck scales with room size so every player starts with two cards. Playing `Quantum Jump` restores the chosen dial to its position in a previous version selected by the player; the other dials stay as they are. The result is recorded as a new version. Setup and automatic Quantum Jump events choose a dial and previous version at random. `Chaos Shift` chooses uniformly from any of the other three values.
-- Scores, clues, verification answers, the engine state, and locked predictions are held on the server; the engine state and card identities are never sent to clients.
+- The host can set a 1–12 round limit (default 6) and 1–100 winning-point threshold (default 20) before starting, review hidden player moves, remove participants, and move active players to spectator status. Spectators can join during a game. The shuffled Event Card deck scales with room size so every player starts with two cards. Playing `Quantum Jump` restores the chosen dial to its position in a previous version selected by the player; the other dials stay as they are. The result is recorded as a new version. Setup and automatic Quantum Jump events choose a dial and previous version at random. `Chaos Shift` chooses uniformly from any of the other three values.
+- Scores, private clues, verification answers, action details, and predictions stay server-side except for the owning player and the host admin log. The final dial values are broadcast after the game ends.
 
 ## Operational scope
 
-This is ready for a single-process public deployment. It does not use accounts, a database, moderation tools, or durable storage. Room codes are intended for sharing with a table of friends. Anyone with a code can join an open seat before the host starts the game.
+This is ready for a single-process public deployment. It does not use accounts, a database, or durable storage. Room codes are intended for sharing with a table of friends. Anyone with a room code can join an open seat before the game starts or watch as a spectator after it begins.
