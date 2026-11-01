@@ -26,6 +26,23 @@ function applyCard(room, card, dial) {
   else value=3-old;
   room.state[i]=value; room.version++; room.history[room.version]=[...room.state]; room.discard.push(card);
 }
+
+function refreshEventClues(room,dial){
+  const version=room.version-1,index='ABC'.indexOf(dial);
+  room.publicVersion=room.version;
+  for(const player of room.players){
+    const clues=room.clues[player.id]||[],matches=clues.filter(c=>c.dial===dial);
+    if(!matches.length)continue;
+    const newest=matches.reduce((a,b)=>b.dealtRound>a.dealtRound?b:a);
+    const updated={...newest,id:uid(5),version,value:room.history[version][index]};
+    room.clues[player.id]=[...clues.filter(c=>c.dial!==dial),updated];
+    const removed=new Set(matches.map(c=>c.id));
+    room.verified[player.id]=(room.verified[player.id]||[]).filter(v=>!removed.has(v.clueId));
+    addAudit(room,{player:player.name,action:`Event Card refreshed dial ${dial} clue to V${version} = ${updated.value}`});
+  }
+  addLog(room,`Event Card resolved: current Version ${room.version}. Existing dial ${dial} clues now refer to Version ${version}.`);
+}
+
 function draw(room){ if(!room.deck.length && room.discard.length){room.deck=shuffled(room.discard);room.discard=[];} return room.deck.pop()||null; }
 function randomClue(room,version,usedDials=[],dealtRound=room.round){ const available='ABC'.split('').filter(d=>!usedDials.includes(d));if(!available.length)return null;const dial=available[rand(available.length)];return {id:uid(5),version,dial,value:room.history[version]['ABC'.indexOf(dial)],dealtRound}; }
 function addLog(room,text){room.log.push({text,at:Date.now()});room.log=room.log.slice(-40);}
@@ -174,7 +191,7 @@ function handle(room,player,msg,ws){
     const a=msg.action;
     if(a==='reveal'){
       const clue=room.clues[player]?.find(c=>c.id===msg.clueId&&c.dealtRound===room.round);if(!clue)return error(ws,'Choose a fresh clue from this round to reveal.');
-      if(room.roomEvents.some(e=>e.clue?.id===clue.id))return error(ws,'That clue is already public.');
+      if(room.roomEvents.some(e=>e.clue?.version===clue.version&&e.clue?.dial===clue.dial))return error(ws,'That clue is already public.');
       if(!canAfford(p,room.revealReward))return error(ws,`Revealing costs ${-room.revealReward} points and you have ${p.points}.`);const before=p.points;p.points+=room.revealReward;room.roomEvents.push({id:uid(4),clue:{...clue,owner:p.name}});const text=`Revealed V${clue.version}, dial ${clue.dial} = ${clue.value}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='verify'){
       if(!canAfford(p,room.verifyReward))return error(ws,`You need at least ${-room.verifyReward} points to verify.`);const clue=room.clues[player]?.find(c=>c.id===msg.clueId);if(!clue)return error(ws,'Choose one of your clues first.');const before=p.points;p.points+=room.verifyReward;const yes=room.state['ABC'.indexOf(clue.dial)]===clue.value;room.verified[player].unshift({clueId:clue.id,answer:yes,round:room.round});room.verified[player]=room.verified[player].slice(0,20);const text=`Verified V${clue.version}, dial ${clue.dial} = ${clue.value}: ${yes?'MATCH':'NO MATCH'}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
@@ -190,6 +207,7 @@ function handle(room,player,msg,ws){
         if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');
         const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];hand.splice(idx,1);applyCard(room,card,msg.dial);p.points+=room.cardReward;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and ${pointsPhrase(room.cardReward)}.`);const text=`Played ${card} on ${msg.dial}: ${old} → ${room.state[i]} (new V${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});
       }
+      refreshEventClues(room,msg.dial);
       const replacement=draw(room);if(replacement){hand.push(replacement);addAudit(room,{player:p.name,action:`Replacement card dealt: ${replacement}`});}advance(room);
     } else return error(ws,'Unknown action.');
     broadcast(room);return;
