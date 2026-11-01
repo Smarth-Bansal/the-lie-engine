@@ -41,6 +41,7 @@ function refreshEventClues(room,dial){
     addAudit(room,{player:player.name,action:`Event Card refreshed dial ${dial} clue to V${version} = ${updated.value}`});
   }
   if(room.variant!=='classic'){const matches=room.publicClues.filter(c=>c.dial===dial);if(matches.length)room.publicClues=[...room.publicClues.filter(c=>c.dial!==dial),{...matches[0],id:uid(5),version,value:room.history[version][index]}];}
+  excludePublicClues(room);
   addLog(room,`Event Card resolved: current Version ${room.version}. Existing dial ${dial} clues now refer to Version ${version}.`);
 }
 
@@ -101,11 +102,21 @@ function moveSeat(room,id,{spectate=false}={}){
   if(spectatorIndex>=0){const [p]=room.spectators.splice(spectatorIndex,1);return p;}
   return null;
 }
+function excludePublicClues(room){
+ if(room.variant==='classic')return;
+ const keys=new Set(room.publicClues.map(c=>`${c.version}:${c.dial}`));
+ for(const p of room.players){
+  const removed=new Set((room.clues[p.id]||[]).filter(c=>keys.has(`${c.version}:${c.dial}`)).map(c=>c.id));
+  room.clues[p.id]=(room.clues[p.id]||[]).filter(c=>!removed.has(c.id));
+  room.verified[p.id]=(room.verified[p.id]||[]).filter(v=>!removed.has(v.clueId));
+ }
+}
 function dealVariantRound(room){
  if(room.variant==='classic')return;
  const version=Math.max(0,room.version-1),clue=randomClue(room,version);
  if(!room.publicClues.some(c=>c.version===clue.version&&c.dial===clue.dial))room.publicClues.push(clue);
- for(const p of room.players){const dealt=room.variant==='mixed'?[randomClue(room,version)]:[];room.clues[p.id]=[...(room.clues[p.id]||[]),...dealt];room.verified[p.id]=[];for(const c of dealt)addAudit(room,{player:p.name,clues:`V${c.version} · Dial ${c.dial} = ${c.value}`});}
+ for(const p of room.players){const used=[...room.publicClues,...(room.clues[p.id]||[])].filter(c=>c.version===version).map(c=>c.dial),privateClue=room.variant==='mixed'?randomClue(room,version,used):null,dealt=privateClue?[privateClue]:[];room.clues[p.id]=[...(room.clues[p.id]||[]),...dealt];room.verified[p.id]=[];for(const c of dealt)addAudit(room,{player:p.name,clues:`V${c.version} · Dial ${c.dial} = ${c.value}`});}
+ excludePublicClues(room);
  addAudit(room,{player:'Public',clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});
 }
 function start(room){
@@ -207,8 +218,8 @@ function handle(room,player,msg,ws){
     if(!p||room.variant!=='paid'||room.phase!=='actions'||room.players[room.turn]?.id!==player)return error(ws,'Buy a clue before your action on your turn.');
     if(room.purchased[player]===room.round)return error(ws,'You already bought a clue this round.');
     if(p.points<room.cluePrice)return error(ws,'Not enough points to buy a clue.');
-    const version=Math.max(0,room.version-1),used=(room.clues[player]||[]).filter(c=>c.version===version).map(c=>c.dial),clue=randomClue(room,version,used);
-    if(!clue)return error(ws,'You already have every dial clue for this version.');
+    const version=Math.max(0,room.version-1),used=[...(room.clues[player]||[]),...room.publicClues].filter(c=>c.version===version).map(c=>c.dial),clue=randomClue(room,version,used);
+    if(!clue)return error(ws,'No private clue is available for this version beyond your existing clues and the public clues.');
     const before=p.points;p.points-=room.cluePrice;room.clues[player].push(clue);room.purchased[player]=room.round;addAudit(room,{player:p.name,clues:`Bought V${clue.version} · Dial ${clue.dial} = ${clue.value}`,points:`${before} → ${p.points}`});broadcast(room);return;
   }
   if(msg.type==='action'){
@@ -217,7 +228,7 @@ function handle(room,player,msg,ws){
     if(a==='reveal'){
       const clue=room.clues[player]?.find(c=>c.id===msg.clueId&&c.dealtRound===room.round);if(!clue)return error(ws,'Choose a fresh clue from this round to reveal.');
       if(room.roomEvents.some(e=>e.clue?.version===clue.version&&e.clue?.dial===clue.dial)||(room.publicClues||[]).some(c=>c.version===clue.version&&c.dial===clue.dial))return error(ws,'That clue is already public.');
-      if(!canAfford(p,room.revealReward))return error(ws,`Revealing costs ${-room.revealReward} points and you have ${p.points}.`);const before=p.points;p.points+=room.revealReward;room.roomEvents.push({id:uid(4),clue:{...clue,owner:p.name}});if(room.variant!=='classic')room.publicClues.push({...clue,owner:p.name});const text=`Revealed V${clue.version}, dial ${clue.dial} = ${clue.value}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
+      if(!canAfford(p,room.revealReward))return error(ws,`Revealing costs ${-room.revealReward} points and you have ${p.points}.`);const before=p.points;p.points+=room.revealReward;room.roomEvents.push({id:uid(4),clue:{...clue,owner:p.name}});if(room.variant!=='classic'){room.publicClues.push({...clue,owner:p.name});excludePublicClues(room);}const text=`Revealed V${clue.version}, dial ${clue.dial} = ${clue.value}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='verify'){
       if(!canAfford(p,room.verifyReward))return error(ws,`You need at least ${-room.verifyReward} points to verify.`);const clue=room.clues[player]?.find(c=>c.id===msg.clueId);if(!clue)return error(ws,'Choose one of your clues first.');const before=p.points;p.points+=room.verifyReward;const yes=room.state['ABC'.indexOf(clue.dial)]===clue.value;room.verified[player].unshift({clueId:clue.id,answer:yes,round:room.round});room.verified[player]=room.verified[player].slice(0,20);const text=`Verified V${clue.version}, dial ${clue.dial} = ${clue.value}: ${yes?'MATCH':'NO MATCH'}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='interfere'){
