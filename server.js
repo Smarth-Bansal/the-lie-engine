@@ -12,7 +12,7 @@ const mime = {'.png':'image/png','.ico':'image/x-icon','.html':'text/html; chars
 const rand = n => crypto.randomInt(n);
 const uid = n => crypto.randomBytes(n).toString('hex');
 const shuffled = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=rand(i+1);[b[i],b[j]]=[b[j],b[i]];} return b; };
-const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],lastAdminId:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyReward:-1,interfereReward:-2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,acted:0,order:[],roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
+const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],rankings:[],rankingRound:0,lastAdminId:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyReward:-1,interfereReward:-2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,acted:0,order:[],roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
 
 function applyCard(room, card, dial) {
   const i='ABC'.indexOf(dial), old=room.state[i]; let value;
@@ -60,7 +60,7 @@ function releaseAdminSeat(room,id){if(room.adminSeat?.id===id){room.spectators.p
 function serial(room, player) {
   const active=room.players.find(p=>p.id===player),spectator=room.spectators.find(p=>p.id===player),adminOnly=room.adminSeat?.id===player,own=active||spectator||(adminOnly?room.adminSeat:null),admin=isAdmin(room,player),starterId=caretaker(room),isStarter=starterId===player,starterPerson=starterId?everyone(room).find(x=>x.id===starterId):null;
   return {
-    code:room.code, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,verifyReward:room.verifyReward,interfereReward:room.interfereReward,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
+    code:room.code, rankings:room.rankings||[], rankingRound:room.rankingRound||0, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,verifyReward:room.verifyReward,interfereReward:room.interfereReward,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
     publicVersion:room.publicVersion, roundStart:room.roundStart, roundEnd:room.roundEnd,
     finalState:room.phase==='finished'?[...room.state]:null, finalVersion:room.phase==='finished'?room.version:null,
     players:room.players.map(p=>({id:p.id,name:p.name,points:p.id===player||admin?p.points:undefined,host:isAdmin(room,p.id),admin:isAdmin(room,p.id),connected:!!p.socket,ready:!!room.predictions[p.id]})),
@@ -116,13 +116,22 @@ function roundStart(room){
   for(const p of room.players){for(const version of (v1===v2?[v2]:[v1,v2])){const used=room.clues[p.id].filter(c=>c.version===version).map(c=>c.dial);const clue=randomClue(room,version,used);if(clue){room.clues[p.id].push(clue);addAudit(room,{player:p.name,clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});}}}
   room.phase='actions';addLog(room,`Round ${room.round} begins at public Version ${room.publicVersion}. ${room.players[room.turn].name} takes the first turn.`);addAudit(room,{action:`Round begins · public V${room.publicVersion} · first turn: ${room.players[room.turn].name}`});
 }
+
+function snapshotRankings(room,perfectIds=[]){
+  const rows=room.players.map(p=>({id:p.id,name:p.name,points:p.points,perfect:perfectIds.includes(p.id)})).sort((a,b)=>Number(b.perfect)-Number(a.perfect)||b.points-a.points);
+  let rank=0;
+  room.rankings=rows.map((p,i)=>{if(i===0||p.perfect!==rows[i-1].perfect||p.points!==rows[i-1].points)rank=i+1;return {id:p.id,name:p.name,rank};});
+  room.rankingRound=room.round;
+}
+
 function scorePredictions(room){
   const results=room.players.map(p=>{const guess=room.predictions[p.id].values;return {player:p,correct:guess.reduce((n,v,i)=>n+(v===room.state[i]?1:0),0)}});
   const perfect=results.filter(r=>r.correct===3).map(r=>r.player);
   room.phase='reveal';
   for(const {player:p} of results){const guess=room.predictions[p.id].values,actual=room.state,before=p.points,parts=['A','B','C'].map((dial,i)=>`${dial}: guessed ${guess[i]}, actual ${actual[i]} ${guess[i]===actual[i]?'✓':'✗'}`);addAudit(room,{player:p.name,prediction:parts.join(' · '),points:`${before} before scoring`});}
-  if(perfect.length){room.endReason='perfect';room.winners=perfect.map(p=>p.id);room.roundEnd=room.version;room.phase='finished';addLog(room,`${perfect.map(p=>p.name).join(' and ')} ${perfect.length===1?'has':'have'} guessed all three dials. Version ${room.roundStart} → ${room.roundEnd}; no automatic event was applied.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
+  if(perfect.length){room.endReason='perfect';room.winners=perfect.map(p=>p.id);snapshotRankings(room,room.winners);room.roundEnd=room.version;room.phase='finished';addLog(room,`${perfect.map(p=>p.name).join(' and ')} ${perfect.length===1?'has':'have'} guessed all three dials. Version ${room.roundStart} → ${room.roundEnd}; no automatic event was applied.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
   for(const {player:p,correct} of results){const before=p.points,raw=correct===2?room.twoDialReward:correct===1?room.oneDialReward:0,earned=Math.max(raw,-p.points);room.earned[p.id]=earned;p.points+=earned;addAudit(room,{player:p.name,points:`${before} → ${p.points} (${earned?`${fmtPts(earned)} for ${correct} correct dial${correct===1?'':'s'}`:'no prediction points'})`});}
+  snapshotRankings(room);
   const card=draw(room)||names[rand(names.length)],dial='ABC'[rand(3)],i='ABC'.indexOf(dial),old=room.state[i];applyCard(room,card,dial);room.roundEnd=room.version;addAudit(room,{player:'Automatic event',action:`${card} on ${dial}: ${old} → ${room.state[i]} (new V${room.version})`});
   addLog(room,`The automatic event advances the machine to Version ${room.roundEnd}. The round's hidden changes remain secret.`);
   if(room.round>=room.roundLimit){const high=Math.max(...room.players.map(p=>p.points));room.winners=room.players.filter(p=>p.points===high).map(p=>p.id);room.endReason='points';room.phase='finished';addLog(room,`${room.roundLimit} rounds complete. ${room.players.filter(p=>room.winners.includes(p.id)).map(p=>p.name).join(' and ')} ${room.winners.length===1?'wins':'share the win'} on points.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
