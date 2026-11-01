@@ -21,7 +21,7 @@ function applyCard(room, card, dial) {
   else if(card==='Double Pulse') value=(old+2)%4;
   else if(card==='Overload') value=(old+3)%4;
   else if(card==='Chaos Shift') { const values=[0,1,2,3].filter(v=>v!==old); value=values[rand(3)]; }
-  else if(card==='Quantum Jump') value=room.version>0?room.history[rand(room.version)][i]:(old+(rand(2)?1:3))%4;
+  else if(card==='Quantum Jump') value=room.version>0?room.history[room.version-1][i]:old;
   else if(card==='Reset Signal') value=old===0?2:0;
   else value=3-old;
   room.state[i]=value; room.version++; room.history[room.version]=[...room.state]; room.discard.push(card);
@@ -238,7 +238,7 @@ function handle(room,player,msg,ws){
     } else if(a==='card'){
       if(!room.deck.length)return error(ws,'No Event Cards remain. Choose another action.');
       if(!/^[ABC]$/.test(msg.dial))return error(ws,'Choose a target dial.');
-      const target=msg.version==null?room.version-1:Number(msg.version);if(!Number.isInteger(target)||target<0||target>=room.version)return error(ws,'Choose a valid previous version for Quantum Jump.');
+      const target=room.version-1;
       if(!canAfford(p,room.cardReward))return error(ws,'Not enough points to play an Event Card.');
       const card=draw(room),before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];
       if(card==='Quantum Jump'){room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);}else applyCard(room,card,msg.dial);
