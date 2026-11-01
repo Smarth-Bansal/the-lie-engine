@@ -40,7 +40,7 @@ function refreshEventClues(room,dial){
     room.verified[player.id]=(room.verified[player.id]||[]).filter(v=>!removed.has(v.clueId));
     addAudit(room,{player:player.name,action:`Event Card refreshed dial ${dial} clue to V${version} = ${updated.value}`});
   }
-  if(room.variant!=='classic'){const matches=room.publicClues.filter(c=>c.dial===dial);if(matches.length)room.publicClues=[...room.publicClues.filter(c=>c.dial!==dial),{...matches[0],id:uid(5),version,value:room.history[version][index]}];}
+  if(room.variant!=='classic'){const refreshed=room.publicClues.map(c=>c.dial===dial?{...c,id:uid(5),version,value:room.history[version][index]}:c),unique=new Map();for(const c of refreshed){const key=`${c.version}:${c.dial}`;if(!unique.has(key)||!c.owner)unique.set(key,c);}room.publicClues=[...unique.values()];}
   excludePublicClues(room);
   addLog(room,`Event Card resolved: current Version ${room.version}. Existing dial ${dial} clues now refer to Version ${version}.`);
 }
@@ -114,7 +114,7 @@ function excludePublicClues(room){
 function dealVariantRound(room){
  if(room.variant==='classic')return;
  const version=Math.max(0,room.version-1),clue=randomClue(room,version);
- if(!room.publicClues.some(c=>c.version===clue.version&&c.dial===clue.dial))room.publicClues.push(clue);
+ room.publicClues=[...room.publicClues.filter(c=>c.owner&&!(c.version===clue.version&&c.dial===clue.dial)),{...clue,source:'system'}];
  for(const p of room.players){const used=[...room.publicClues,...(room.clues[p.id]||[])].filter(c=>c.version===version).map(c=>c.dial),privateClue=room.variant==='mixed'?randomClue(room,version,used):null,dealt=privateClue?[privateClue]:[];room.clues[p.id]=[...(room.clues[p.id]||[]),...dealt];room.verified[p.id]=[];for(const c of dealt)addAudit(room,{player:p.name,clues:`V${c.version} · Dial ${c.dial} = ${c.value}`});}
  excludePublicClues(room);
  addAudit(room,{player:'Public',clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});
