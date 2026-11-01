@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, 'public');
 const rooms = new Map();
 const MAX_PLAYERS = 12;
-const names = ['Forward Pulse','Reverse Pulse','Double Pulse','Chaos Shift','Overload','Reset Signal','Mirror Flip','Quantum Jump'];
+const names = ['Forward Pulse','Reverse Pulse','Double Pulse','Chaos Shift','Reset Signal','Mirror Flip','Quantum Jump'];
 const mime = {'.png':'image/png','.ico':'image/x-icon','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
 const rand = n => crypto.randomInt(n);
 const uid = n => crypto.randomBytes(n).toString('hex');
@@ -45,7 +45,7 @@ function refreshEventClues(room,dial){
   addLog(room,`Event Card resolved: current Version ${room.version}. Existing dial ${dial} clues now refer to Version ${version}.`);
 }
 
-function draw(room){ if(!room.deck.length && room.discard.length){room.deck=shuffled(room.discard);room.discard=[];} return room.deck.pop()||null; }
+function draw(room,allowQuantum=true){const indices=room.deck.map((card,i)=>({card,i})).filter(x=>allowQuantum||x.card!=='Quantum Jump');if(!indices.length)return null;return room.deck.splice(indices[rand(indices.length)].i,1)[0];}
 function randomClue(room,version,usedDials=[],dealtRound=room.round){ const available='ABC'.split('').filter(d=>!usedDials.includes(d));if(!available.length)return null;const dial=available[rand(available.length)];return {id:uid(5),version,dial,value:room.history[version]['ABC'.indexOf(dial)],dealtRound}; }
 function addLog(room,text){room.log.push({text,at:Date.now()});room.log=room.log.slice(-40);}
 function addAdminLog(room,text){room.adminLog.unshift({text,at:Date.now()});room.adminLog=room.adminLog.slice(0,400);}
@@ -123,9 +123,9 @@ function start(room){
   if(room.players.length<1||room.players.length>MAX_PLAYERS||room.phase!=='lobby')return false;
   room.round=1;
   room.state=[rand(4),rand(4),rand(4)];room.history=[[...room.state]];room.version=0;
-  const copies=Math.max(3,Math.ceil((room.players.length*2+2)/names.length));room.deck=shuffled(names.flatMap(n=>Array(copies).fill(n)));room.discard=[];
-  const setup=[];while(setup.length<2){const card=draw(room);if(!card)break;if(card==='Quantum Jump'){room.deck=shuffled([...room.deck,card]);continue;}setup.push(card);}for(const card of setup)applyCard(room,card,'ABC'[rand(3)]);
-  room.audit=[];room.players.forEach(p=>{p.points=room.startingPoints;const first=randomClue(room,0);room.clues[p.id]=room.variant==='classic'?[first,randomClue(room,0,[first.dial]),randomClue(room,1)]:[];room.hands[p.id]=[draw(room),draw(room)];room.verified[p.id]=[];for(const clue of room.clues[p.id])addAudit(room,{player:p.name,clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});addAudit(room,{player:p.name,action:`Starting hand dealt: ${room.hands[p.id].join(', ')}`,points:`${p.points} starting points`});});
+  room.deck=names.flatMap(n=>Array(4).fill(n));room.discard=[];
+  for(let n=0;n<2;n++){const card=draw(room,false);if(card)applyCard(room,card,'ABC'[rand(3)]);}
+  room.audit=[];room.players.forEach(p=>{p.points=room.startingPoints;const first=randomClue(room,0);room.clues[p.id]=room.variant==='classic'?[first,randomClue(room,0,[first.dial]),randomClue(room,1)]:[];room.hands[p.id]=[];room.verified[p.id]=[];for(const clue of room.clues[p.id])addAudit(room,{player:p.name,clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});addAudit(room,{player:p.name,action:`Shared Event Card supply ready`,points:`${p.points} starting points`});});
   room.publicVersion=room.version;room.roundStart=room.version;room.roundStarter=0;room.phase='actions';beginRound(room);room.log=[];room.predictions={};room.earned={};room.winners=[];room.endReason=null;room.roundEnd=null;room.roomEvents=[];room.publicClues=[];room.purchased={};dealVariantRound(room);
   addLog(room,`Round 1 begins at public Version ${room.publicVersion}. ${room.players[room.turn].name} takes the first turn.`);addAdminLog(room,`Game started: ${room.players.length} players, ${room.roundLimit} rounds.`);addAudit(room,{player:room.adminSeat?.name||'Room host',action:`Game started · ${room.players.length} players · ${room.roundLimit} rounds · first turn: ${room.players[room.turn].name}`});return true;
 }
@@ -151,8 +151,9 @@ function scorePredictions(room){
   if(perfect.length){room.endReason='perfect';room.winners=perfect.map(p=>p.id);snapshotRankings(room,room.winners);room.roundEnd=room.version;room.phase='finished';addLog(room,`${perfect.map(p=>p.name).join(' and ')} ${perfect.length===1?'has':'have'} guessed all three dials. Version ${room.roundStart} → ${room.roundEnd}; no automatic event was applied.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
   for(const {player:p,correct} of results){const before=p.points,raw=correct===2?room.twoDialReward:correct===1?room.oneDialReward:0,earned=Math.max(raw,-p.points);room.earned[p.id]=earned;p.points+=earned;addAudit(room,{player:p.name,points:`${before} → ${p.points} (${earned?`${fmtPts(earned)} for ${correct} correct dial${correct===1?'':'s'}`:'no prediction points'})`});}
   snapshotRankings(room);
-  const card=draw(room)||names[rand(names.length)],dial='ABC'[rand(3)],i='ABC'.indexOf(dial),old=room.state[i];applyCard(room,card,dial);if(room.variant!=='classic')refreshEventClues(room,dial);room.roundEnd=room.version;addAudit(room,{player:'Automatic event',action:`${card} on ${dial}: ${old} → ${room.state[i]} (new V${room.version})`});
-  addLog(room,`The automatic event advances the machine to Version ${room.roundEnd}. The round's hidden changes remain secret.`);
+  const card=draw(room);
+  if(card){const dial='ABC'[rand(3)],i='ABC'.indexOf(dial),old=room.state[i];applyCard(room,card,dial);if(room.variant!=='classic')refreshEventClues(room,dial);addAudit(room,{player:'Automatic event',action:`${card} on ${dial}: ${old} → ${room.state[i]} (V${room.version})`});addLog(room,`Automatic event: Version ${room.version}.`);}else addLog(room,'No Event Cards remain. No automatic event this round.');
+  room.roundEnd=room.version;
   if(room.round>=room.roundLimit){const high=Math.max(...room.players.map(p=>p.points));room.winners=room.players.filter(p=>p.points===high).map(p=>p.id);room.endReason='points';room.phase='finished';addLog(room,`${room.roundLimit} rounds complete. ${room.players.filter(p=>room.winners.includes(p.id)).map(p=>p.name).join(' and ')} ${room.winners.length===1?'wins':'share the win'} on points.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
 }
 function handle(room,player,msg,ws){
@@ -235,16 +236,15 @@ function handle(room,player,msg,ws){
       if(!canAfford(p,room.interfereReward))return error(ws,`You need at least ${-room.interfereReward} points to interfere.`);if(!'ABC'.includes(msg.dial)||![-1,1].includes(msg.direction))return error(ws,'Choose a dial and a direction.');const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];p.points+=room.interfereReward;room.state[i]=(room.state[i]+msg.direction+4)%4;room.version++;room.history[room.version]=[...room.state];
       const text=`Interfered with dial ${msg.dial}: ${old} → ${room.state[i]} (Version ${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='card'){
-      const hand=room.hands[player],idx=hand?.indexOf(msg.card);if(idx<0||!hand)return error(ws,'That card is not in your hand.');const card=hand[idx];if(!canAfford(p,room.cardReward))return error(ws,`Playing a card costs ${-room.cardReward} points and you have ${p.points}.`);
-      if(card==='Quantum Jump'){
-        const target=Number(msg.version);if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');if(!Number.isInteger(target)||target<0||target>=room.version)return error(ws,'Choose a previous version to restore.');
-        const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];hand.splice(idx,1);room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);p.points+=room.cardReward;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and ${pointsPhrase(room.cardReward)}.`);const text=`Played Quantum Jump on ${msg.dial}: ${old} → ${room.state[i]} (restored V${target}, new V${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});
-      }else{
-        if(!'ABC'.includes(msg.dial))return error(ws,'Choose a target dial.');
-        const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];hand.splice(idx,1);applyCard(room,card,msg.dial);p.points+=room.cardReward;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and ${pointsPhrase(room.cardReward)}.`);const text=`Played ${card} on ${msg.dial}: ${old} → ${room.state[i]} (new V${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});
-      }
-      refreshEventClues(room,msg.dial);
-      const replacement=draw(room);if(replacement){hand.push(replacement);addAudit(room,{player:p.name,action:`Replacement card dealt: ${replacement}`});}advance(room);
+      if(!room.deck.length)return error(ws,'No Event Cards remain. Choose another action.');
+      if(!/^[ABC]$/.test(msg.dial))return error(ws,'Choose a target dial.');
+      const target=Number(msg.version);if(!Number.isInteger(target)||target<0||target>=room.version)return error(ws,'Choose a previous version in case Quantum Jump is drawn.');
+      if(!canAfford(p,room.cardReward))return error(ws,'Not enough points to play an Event Card.');
+      const card=draw(room),before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];
+      if(card==='Quantum Jump'){room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);}else applyCard(room,card,msg.dial);
+      p.points+=room.cardReward;addLog(room,`${p.name} plays a random Event Card on dial ${msg.dial} and ${pointsPhrase(room.cardReward)}.`);
+      addAudit(room,{player:p.name,action:`Random ${card} on ${msg.dial}: ${old} → ${room.state[i]} (V${room.version})${card==='Quantum Jump'?` · restored V${target}`:''}`,points:`${before} → ${p.points}`});
+      refreshEventClues(room,msg.dial);advance(room);
     } else return error(ws,'Unknown action.');
     broadcast(room);return;
   }
