@@ -238,7 +238,7 @@ function handle(room,player,msg,ws){
     } else if(a==='card'){
       if(!room.deck.length)return error(ws,'No Event Cards remain. Choose another action.');
       if(!/^[ABC]$/.test(msg.dial))return error(ws,'Choose a target dial.');
-      const target=Number(msg.version);if(!Number.isInteger(target)||target<0||target>=room.version)return error(ws,'Choose a previous version in case Quantum Jump is drawn.');
+      const target=msg.version==null?room.version-1:Number(msg.version);if(!Number.isInteger(target)||target<0||target>=room.version)return error(ws,'Choose a valid previous version for Quantum Jump.');
       if(!canAfford(p,room.cardReward))return error(ws,'Not enough points to play an Event Card.');
       const card=draw(room),before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];
       if(card==='Quantum Jump'){room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);}else applyCard(room,card,msg.dial);
