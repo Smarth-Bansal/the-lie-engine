@@ -109,5 +109,5 @@ function renderRankings(){
 
 function renderVariantClues(){
  $('#publicCluePanel').classList.toggle('hidden',state.variant==='classic'||state.phase==='lobby');
- $('#publicClueList').innerHTML=(state.publicClues||[]).slice().reverse().map(c=>`<div class="clue-row">V${c.version} · Dial ${c.dial} was ${c.value}${c.owner?' · revealed by '+safe(c.owner):''}</div>`).join('')||'No public clues yet.';
+ $('#publicClueList').innerHTML=(state.publicClues||[]).slice().reverse().map(c=>`<div class="clue-row">V${c.version} · Dial ${c.dial} was ${c.value}${c.owner?' · revealed by '+safe(c.owner):' · public clue for this round'}</div>`).join('')||'No public clues yet.';
 }
