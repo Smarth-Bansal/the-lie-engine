@@ -1,47 +1,254 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#17191b"><meta name="description" content="A live multiplayer game of clues, secrets, and one perfect guess.">
-  <title>The Lie Engine — INTRAS</title><link rel="icon" href="/mark.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="stylesheet" href="/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#dde3e1">
+  <meta name="description" content="A live multiplayer game of clues, secrets, and one perfect guess.">
+  <title>The Lie Engine – INTRAS</title>
+
+  <link rel="icon" href="/mark.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="grain"></div>
-  <header class="topbar"><a class="brand" href="/"><img class="brand-mark" src="/mark.svg" alt="" width="40" height="40"><span class="brand-name">THE LIE ENGINE<small>INTRAS · IIT KHARAGPUR</small></span></a><div class="top-status hidden"><i id="connectionDot"></i><span id="connectionText"></span></div></header>
+
+  <header class="topbar">
+    <a class="brand" href="/">
+      <img class="brand-mark" src="/mark.svg" alt="" width="40" height="40">
+      <span class="brand-name">The Lie Engine<small>INTRAS, IIT Kharagpur</small></span>
+    </a>
+    <div class="top-status hidden"><i id="connectionDot"></i><span id="connectionText"></span></div>
+  </header>
+
   <main>
+    <!-- Landing -->
     <section id="home" class="home-wrap">
-      <div class="hero-copy"><h1>History never lies.<br><em>The present does.</em></h1><p>Use clues, play cards and work out the three dial values before the other players do.</p>
-        <div class="hero-facts"><span><b>3–12</b> players</span><span><b>1–12</b> rounds</span><span><b>25–40</b> minutes</span></div>
+      <div class="hero-copy">
+        <h1>History never lies.<br><em>The present does.</em></h1>
+        <p>Use clues, play cards and work out the three dial values before the other players do.</p>
+
+        <div class="hero-dials" aria-hidden="true">
+          <div><b>?</b><span>A</span></div>
+          <div><b>?</b><span>B</span></div>
+          <div><b>?</b><span>C</span></div>
+        </div>
+
+        <div class="hero-facts">
+          <span><b>3–12</b> players</span>
+          <span><b>1–12</b> rounds</span>
+          <span><b>25–40</b> minutes</span>
+        </div>
       </div>
-      <div class="entry-card"><label for="playerName">Your name</label><input id="playerName" maxlength="18" placeholder="What should we call you?" autocomplete="nickname">
-        <button id="createBtn" class="btn btn-primary">Create admin room · non-player <span>↗</span></button>
-        <div class="join-divider"><span></span> Or join a room <span></span></div><div class="join-row"><input id="roomCodeInput" maxlength="6" placeholder="Room code" aria-label="Room code" autocomplete="off"><button id="joinBtn" class="btn btn-quiet">Join <span>→</span></button></div>
-        <div id="homeError" class="error-msg"></div><div class="entry-foot"><span class="lock-icon">◈</span> No account needed.</div>
+
+      <div class="entry-card">
+        <label for="playerName">Your name</label>
+        <input id="playerName" maxlength="18" placeholder="Up to 18 characters" autocomplete="nickname">
+        <button id="createBtn" class="btn btn-primary">Create a room as admin (not playing)</button>
+
+        <div class="join-divider"><span></span>or join a room<span></span></div>
+        <div class="join-row">
+          <input id="roomCodeInput" maxlength="6" placeholder="Room code" aria-label="Room code" autocomplete="off">
+          <button id="joinBtn" class="btn btn-quiet">Join</button>
+        </div>
+
+        <div id="homeError" class="error-msg" role="alert"></div>
+        <div class="entry-foot">No account needed.</div>
       </div>
-      <div class="home-bottom"><span></span><button id="rulesLink" class="text-link">How to play <span>↗</span></button></div>
+
+      <div class="home-bottom">
+        <span></span>
+        <button id="rulesLink" class="text-link">How to play</button>
+      </div>
     </section>
 
+    <!-- Room -->
     <section id="room" class="room-wrap hidden">
-      <div class="room-head"><div><h1 id="roomTitle">The Engine Room</h1></div><div class="room-code"><small>Room code</small><button id="copyCode" aria-label="Copy room code"><strong id="roomCode">——</strong><span>▢</span></button></div></div>
+      <div class="room-head">
+        <h1 id="roomTitle">The Engine Room</h1>
+        <div class="room-code">
+          <small>Room code</small>
+          <button id="copyCode" aria-label="Copy room code"><strong id="roomCode">——</strong><span>copy</span></button>
+        </div>
+      </div>
+
       <div id="starterNotice" class="starter-notice hidden"></div>
+
       <div class="room-grid">
         <section class="main-panel">
-          <div id="lobbyPanel" class="panel lobby-panel"><div class="panel-head"><div><h2>Players <span id="playerCount">0 / 12</span></h2></div><div class="waiting-pulse"><i></i> Waiting for players</div></div><div id="playersList" class="players-list"></div><div class="lobby-bottom"><p id="lobbyHint">The admin can start once a player has joined.</p><button id="startBtn" class="btn btn-primary" disabled>Start the game <span>→</span></button><button id="takeSeatBtn" class="btn btn-quiet hidden">Join as a player <span>+</span></button><button id="stepOutBtn" class="btn btn-quiet hidden">Step out · back to admin only</button></div></div>
-          <div id="gamePanel" class="hidden">
-            <div class="machine-panel panel"><div class="machine-top"><div><h2>Machine <span class="live-dot"></span></h2></div><div class="version-stamp"><small>Version</small><b id="versionNumber">V—</b></div></div><div class="dials"><div class="machine-dial"><span>A</span><b>?</b><small>Hidden</small></div><div class="machine-dial"><span>B</span><b>?</b><small>Hidden</small></div><div class="machine-dial"><span>C</span><b>?</b><small>Hidden</small></div></div><div id="machineCaption" class="machine-caption">Values are hidden from players.</div></div>
-            <div id="publicCluePanel" class="panel hidden"><h2>Public clues</h2><div id="publicClueList"></div></div><div id="turnPanel" class="panel turn-panel"></div>
-            <div id="handPanel" class="panel hand-panel"><div class="panel-head"><div><h2>Event Cards <span id="handCount">2 CARDS</span></h2></div><div class="deck-stamp"><small>Deck</small><b id="deckCount">—</b></div></div><div id="handCards" class="hand-cards"></div><div class="hand-note">You receive two Event Cards for the whole game. Played cards are not replaced.</div></div>
-            <div id="cluesPanel" class="panel clues-panel"><div class="panel-head"><div><h2>Fresh clues <span id="clueCount"></span></h2></div><div class="private-tag">Private</div></div><div id="cluesList" class="clues-list"></div><details id="archiveBlock" class="archive-block"><summary>Past clues <span id="archiveCount"></span></summary><div id="archiveClues" class="clues-list"></div></details><div id="verifyResult" class="verify-result hidden"></div></div>
+
+          <div id="lobbyPanel" class="panel lobby-panel">
+            <div class="panel-head">
+              <h2>Players <span id="playerCount">0 / 12</span></h2>
+              <div class="waiting-pulse"><i></i> Waiting for players</div>
+            </div>
+            <div id="playersList" class="players-list"></div>
+            <div class="lobby-bottom">
+              <p id="lobbyHint">The admin can start once a player has joined.</p>
+              <button id="startBtn" class="btn btn-primary" disabled>Start the game <span>→</span></button>
+              <button id="takeSeatBtn" class="btn btn-quiet hidden">Join as a player <span>+</span></button>
+              <button id="stepOutBtn" class="btn btn-quiet hidden">Step out and go back to admin only</button>
+            </div>
           </div>
-          <div id="adminAuditPanel" class="panel admin-audit-panel hidden"><div class="panel-head"><div><h2>Game log</h2></div></div><div id="adminAuditEmpty" class="admin-empty">The audit begins when the game starts.</div><div class="audit-grid"><section class="audit-area"><h3>Clues</h3><div id="adminClueLog" class="audit-list"></div></section><section class="audit-area"><h3>Actions</h3><div id="adminActionLog" class="audit-list"></div></section><section class="audit-area"><h3>Predictions</h3><div id="adminPredictionLog" class="audit-list"></div><div id="adminFinalScores" class="audit-final-scores"></div></section></div></div>
-          <div id="spectatorPanel" class="panel spectator-panel hidden"><div class="panel-head"><div><h2>Spectators <span id="spectatorCount">0</span></h2></div></div><div id="spectatorList" class="spectator-list"></div></div>
+
+          <div id="gamePanel" class="hidden">
+            <div class="machine-panel panel">
+              <div class="machine-top">
+                <h2>Machine <span class="live-dot"></span></h2>
+                <div class="version-stamp"><small>Version</small><b id="versionNumber">V—</b></div>
+              </div>
+              <div class="dials">
+                <div class="machine-dial"><span>A</span><b>?</b><small>Hidden</small></div>
+                <div class="machine-dial"><span>B</span><b>?</b><small>Hidden</small></div>
+                <div class="machine-dial"><span>C</span><b>?</b><small>Hidden</small></div>
+              </div>
+              <div id="machineCaption" class="machine-caption">Values are hidden from players.</div>
+            </div>
+
+            <div id="publicCluePanel" class="panel hidden">
+              <h2>Public clues</h2>
+              <div id="publicClueList"></div>
+            </div>
+
+            <div id="turnPanel" class="panel turn-panel"></div>
+
+            <div id="handPanel" class="panel hand-panel">
+              <div class="panel-head">
+                <h2>Event cards <span id="handCount">2 cards</span></h2>
+                <div class="deck-stamp"><small>Deck</small><b id="deckCount">—</b></div>
+              </div>
+              <div id="handCards" class="hand-cards"></div>
+              <div class="hand-note">You receive two Event Cards for the whole game. Played cards are not replaced.</div>
+            </div>
+
+            <div id="cluesPanel" class="panel clues-panel">
+              <div class="panel-head">
+                <h2>Fresh clues <span id="clueCount"></span></h2>
+                <div class="private-tag">Only you can see these</div>
+              </div>
+              <div id="cluesList" class="clues-list"></div>
+              <details id="archiveBlock" class="archive-block">
+                <summary>Past clues <span id="archiveCount"></span></summary>
+                <div id="archiveClues" class="clues-list"></div>
+              </details>
+              <div id="verifyResult" class="verify-result hidden"></div>
+            </div>
+          </div>
+
+          <div id="adminAuditPanel" class="panel admin-audit-panel hidden">
+            <div class="panel-head"><h2>Game log</h2></div>
+            <div id="adminAuditEmpty" class="admin-empty">The audit begins when the game starts.</div>
+            <div class="audit-grid">
+              <section class="audit-area"><h3>Clues</h3><div id="adminClueLog" class="audit-list"></div></section>
+              <section class="audit-area"><h3>Actions</h3><div id="adminActionLog" class="audit-list"></div></section>
+              <section class="audit-area"><h3>Predictions</h3><div id="adminPredictionLog" class="audit-list"></div><div id="adminFinalScores" class="audit-final-scores"></div></section>
+            </div>
+          </div>
+
+          <div id="spectatorPanel" class="panel spectator-panel hidden">
+            <div class="panel-head"><h2>Spectators <span id="spectatorCount">0</span></h2></div>
+            <div id="spectatorList" class="spectator-list"></div>
+          </div>
         </section>
-        <aside class="side-panel"><div id="rankingsPanel" class="panel hidden"><h2>Rankings</h2><p id="rankingCaption" class="turn-description"></p><div id="rankingsList"></div></div><div id="adminPanel" class="panel admin-panel hidden"><div class="panel-head"><div><h2>Admin controls</h2></div></div><div id="adminAccessList" class="admin-access-list"></div><button id="leaveAdminRole" class="admin-action">Leave admin role</button><label>Game variant<select id="variantInput" style="display:block;width:100%;padding:8px;margin-top:6px;background:#2b2f32;color:#eee;border:1px solid #55595c"><option value="classic">1 · Current rules</option><option value="mixed">2 · Public + private clues</option><option value="paid">3 · Public + paid private clues</option></select></label><div class="admin-settings"><label>Clue purchase price<input data-setting="cluePrice" type="number" min="0" max="20" value="2"></label><label>Rounds<input id="roundLimitInput" type="number" min="1" max="12" value="6"></label><label>Starting points<input data-setting="startingPoints" type="number" min="0" max="100" value="10"></label><label>Reveal reward<input data-setting="revealReward" type="number" min="-20" max="20" value="2"></label><label>Verify reward<input data-setting="verifyReward" type="number" min="-20" max="20" value="-1"></label><label>Interfere reward<input data-setting="interfereReward" type="number" min="-20" max="20" value="-2"></label><label>Event card reward<input data-setting="cardReward" type="number" min="-20" max="20" value="1"></label><label>One dial correct<input data-setting="oneDialReward" type="number" min="-20" max="20" value="1"></label><label>Two dials correct<input data-setting="twoDialReward" type="number" min="-20" max="20" value="3"></label><button id="saveAdminSettings" class="btn btn-quiet">Save game values</button><div id="adminSettingsHint" class="admin-hint"></div></div><div class="admin-section"><h3>Participants</h3><div id="adminParticipants" class="admin-list"></div></div><div class="admin-section"><h3>Player details</h3><div id="adminPrivateState" class="admin-log"></div></div></div><div class="panel balance-panel"><div id="balanceLabel">Points</div><div class="balance-value"><b id="ownPoints">10</b><span>PTS</span><i id="pointsDelta" class="points-delta"></i></div><div class="points-note"><span>◎</span> Points are your score and your action currency.</div></div><div class="panel feed-panel"><div class="panel-head"><div><h2>Recent events</h2></div><span class="feed-live">LIVE</span></div><div id="feedList" class="feed-list"></div></div><div class="panel leave-panel"><button id="leaveBtn" class="text-link">Leave this room <span>↗</span></button></div></aside>
+
+        <aside class="side-panel">
+          <div id="rankingsPanel" class="panel hidden">
+            <h2>Rankings</h2>
+            <p id="rankingCaption" class="turn-description"></p>
+            <div id="rankingsList"></div>
+          </div>
+
+          <div id="adminPanel" class="panel admin-panel hidden">
+            <div class="panel-head"><h2>Admin controls</h2></div>
+            <div id="adminAccessList" class="admin-access-list"></div>
+            <button id="leaveAdminRole" class="admin-action">Leave admin role</button>
+
+            <label class="variant-field">Game variant
+              <select id="variantInput">
+                <option value="classic">1 · Current rules</option>
+                <option value="mixed">2 · Public + private clues</option>
+                <option value="paid">3 · Public + paid private clues</option>
+              </select>
+            </label>
+
+            <div class="admin-settings">
+              <label>Clue purchase price<input data-setting="cluePrice" type="number" min="0" max="20" value="2"></label>
+              <label>Turn timer (seconds, 0 is off)<input data-setting="turnSeconds" type="number" min="0" max="120" value="20"></label>
+              <label>Rounds<input id="roundLimitInput" type="number" min="1" max="12" value="6"></label>
+              <label>Starting points<input data-setting="startingPoints" type="number" min="0" max="100" value="10"></label>
+              <label>Reveal reward<input data-setting="revealReward" type="number" min="-20" max="20" value="2"></label>
+              <label>Verify reward<input data-setting="verifyReward" type="number" min="-20" max="20" value="-1"></label>
+              <label>Interfere reward<input data-setting="interfereReward" type="number" min="-20" max="20" value="-2"></label>
+              <label>Event card reward<input data-setting="cardReward" type="number" min="-20" max="20" value="1"></label>
+              <label>One dial correct<input data-setting="oneDialReward" type="number" min="-20" max="20" value="1"></label>
+              <label>Two dials correct<input data-setting="twoDialReward" type="number" min="-20" max="20" value="3"></label>
+              <button id="saveAdminSettings" class="btn btn-quiet">Save game values</button>
+              <div id="adminSettingsHint" class="admin-hint"></div>
+            </div>
+
+            <div class="admin-section">
+              <h3>Participants</h3>
+              <div id="adminParticipants" class="admin-list"></div>
+            </div>
+            <div class="admin-section">
+              <h3>Player details</h3>
+              <div id="adminPrivateState" class="admin-log"></div>
+            </div>
+          </div>
+
+          <div class="panel balance-panel">
+            <div id="balanceLabel">Points</div>
+            <div class="balance-value"><b id="ownPoints">10</b><span>pts</span><i id="pointsDelta" class="points-delta"></i></div>
+            <div class="points-note">Points are your score and your action currency.</div>
+          </div>
+
+          <div class="panel feed-panel">
+            <div class="panel-head">
+              <h2>Recent events</h2>
+              <span class="feed-live">Live</span>
+            </div>
+            <div id="feedList" class="feed-list"></div>
+          </div>
+
+          <div class="panel leave-panel"><button id="leaveBtn" class="text-link">Leave this room</button></div>
+        </aside>
       </div>
-      <div class="room-footer"><span>Rounds are set by the admin. The first turn changes each round.</span><button id="rulesLinkRoom" class="text-link">How to play <span>↗</span></button></div>
+
+      <div class="room-footer">
+        <span>Rounds are set by the admin. The first turn changes each round.</span>
+        <button id="rulesLinkRoom" class="text-link">How to play</button>
+      </div>
     </section>
   </main>
-  <div id="toast" class="toast"></div>
-  <dialog id="rulesDialog" class="rules-dialog"><div class="dialog-head"><div><h2>How to play</h2></div><button id="closeRules" class="close-btn" aria-label="Close">×</button></div><div class="rules-content"><p class="rules-lead">Use the clues and your actions to work out the machine.</p><div class="rule-block"><b>01 · Take one action</b><p>On your turn, reveal a fresh clue, check a clue privately, shift a dial, or play an Event Card.</p></div><div class="rule-block"><b>Revealing clues</b><p>You can reveal clues dealt in the current round. Older clues stay in your private archive, where you can still verify them.</p></div><div class="rule-block"><b>02 · Lock your prediction</b><p>Once every player has acted, secretly choose a value from 0–3 for A, B and C. Your guess stays hidden until everyone locks.</p></div><div class="rule-block"><b>03 · Read the result</b><p>The room admin sets the rewards for one- and two-dial matches. A perfect guess wins immediately. Otherwise, a hidden automatic event changes the machine before the next round. After the final round, the highest score wins; ties share the win.</p></div><div class="rule-block"><b>Admin</b><p>The admin can be a separate non-player, set scoring values, see the current dials, and manage players and spectators. Before the game starts, an admin can also take a seat as a player. Scoring values can be negative: a negative value deducts points and a positive one adds them. If the last admin leaves the role, they can still start the game and continue rounds, but nothing more. The first player changes each round. Late arrivals can watch.</p></div><div class="rule-block"><b>Quantum Jump</b><p>Choose one dial. Quantum Jump restores its value from the immediately previous version; the other two dials do not change.</p></div><div class="rule-block"><b>Clues</b><p>Every clue records a true dial value from an earlier version. Interference and Event Cards change the machine, so old facts can go stale.</p></div><div class="rules-scoring"><span>3–12 players</span><span>1–12 rounds</span><span>Ties share the win</span></div></div></dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <dialog id="rulesDialog" class="rules-dialog">
+    <div class="dialog-head">
+      <h2>How to play</h2>
+      <button id="closeRules" class="close-btn" aria-label="Close">×</button>
+    </div>
+    <div class="rules-content">
+      <p class="rules-lead">Use the clues and your actions to work out the machine.</p>
+
+      <div class="rule-block"><b>1. Take one action</b><p>On your turn, reveal a fresh clue, check a clue privately, shift a dial, or play an Event Card.</p></div>
+      <div class="rule-block"><b>Turn timer</b><p>If the admin has turned the timer on, you must act before the bar runs out or your action is skipped. Players who are offline when their turn comes are skipped for that round. Predictions are not timed.</p></div>
+      <div class="rule-block"><b>Revealing clues</b><p>You can reveal clues dealt in the current round. Older clues stay in your private archive, where you can still verify them.</p></div>
+      <div class="rule-block"><b>2. Lock your prediction</b><p>Once every player has acted, secretly choose a value from 0–3 for A, B and C. Your guess stays hidden until everyone locks.</p></div>
+      <div class="rule-block"><b>3. Read the result</b><p>The room admin sets the rewards for one- and two-dial matches. A perfect guess wins immediately. Otherwise, a hidden automatic event changes the machine before the next round. After the final round, the highest score wins; ties share the win.</p></div>
+      <div class="rule-block"><b>Admin</b><p>The admin can be a separate non-player, set scoring values, see the current dials, and manage players and spectators. Before the game starts, an admin can also take a seat as a player. Scoring values can be negative: a negative value deducts points and a positive one adds them. If the last admin leaves the role, they can still start the game and continue rounds, but nothing more. The first player changes each round. Late arrivals can watch.</p></div>
+      <div class="rule-block"><b>Quantum Jump</b><p>Choose one dial. Quantum Jump restores its value from the immediately previous version; the other two dials do not change.</p></div>
+      <div class="rule-block"><b>Clues</b><p>Every clue records a true dial value from an earlier version. Interference and Event Cards change the machine, so old facts can go stale.</p></div>
+
+      <div class="rules-scoring"><span>3–12 players</span><span>1–12 rounds</span><span>Ties share the win</span></div>
+    </div>
+  </dialog>
+
   <script src="/app.js" defer></script>
-</body></html>
+</body>
+</html>

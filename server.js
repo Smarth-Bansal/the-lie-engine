@@ -12,7 +12,7 @@ const mime = {'.png':'image/png','.ico':'image/x-icon','.html':'text/html; chars
 const rand = n => crypto.randomInt(n);
 const uid = n => crypto.randomBytes(n).toString('hex');
 const shuffled = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=rand(i+1);[b[i],b[j]]=[b[j],b[i]];} return b; };
-const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],variant:'classic',cluePrice:2,publicClues:[],purchased:{},rankings:[],rankingRound:0,lastAdminId:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,verifyReward:-1,interfereReward:-2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,acted:0,order:[],roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
+const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],variant:'classic',cluePrice:2,publicClues:[],purchased:{},rankings:[],rankingRound:0,lastAdminId:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,turnSeconds:20,turnDeadline:null,turnTimer:null,timerKey:null,startingPoints:10,revealReward:2,verifyReward:-1,interfereReward:-2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,acted:0,order:[],roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
 
 function applyCard(room, card, dial) {
   const i='ABC'.indexOf(dial), old=room.state[i]; let value;
@@ -62,7 +62,7 @@ function releaseAdminSeat(room,id){if(room.adminSeat?.id===id){room.spectators.p
 function serial(room, player) {
   const active=room.players.find(p=>p.id===player),spectator=room.spectators.find(p=>p.id===player),adminOnly=room.adminSeat?.id===player,own=active||spectator||(adminOnly?room.adminSeat:null),admin=isAdmin(room,player),starterId=caretaker(room),isStarter=starterId===player,starterPerson=starterId?everyone(room).find(x=>x.id===starterId):null;
   return {
-    code:room.code,variant:room.variant,cluePrice:room.cluePrice,publicClues:room.publicClues||[],boughtClue:room.purchased?.[player]===room.round, rankings:room.rankings||[], rankingRound:room.rankingRound||0, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,verifyReward:room.verifyReward,interfereReward:room.interfereReward,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
+    code:room.code,variant:room.variant,cluePrice:room.cluePrice,publicClues:room.publicClues||[],boughtClue:room.purchased?.[player]===room.round, rankings:room.rankings||[], rankingRound:room.rankingRound||0, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,verifyReward:room.verifyReward,interfereReward:room.interfereReward,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null, turnSeconds:room.turnSeconds, turnDeadline:room.turnDeadline, serverNow:Date.now(),
     publicVersion:room.publicVersion, roundStart:room.roundStart, roundEnd:room.roundEnd,
     finalState:room.phase==='finished'?[...room.state]:null, finalVersion:room.phase==='finished'?room.version:null,
     players:room.players.map(p=>({id:p.id,name:p.name,points:p.id===player||admin?p.points:undefined,host:isAdmin(room,p.id),admin:isAdmin(room,p.id),connected:!!p.socket,ready:!!room.predictions[p.id]})),
@@ -71,19 +71,49 @@ function serial(room, player) {
     you:own?{id:own.id,name:own.name,points:own.points,host:admin,admin,adminOnly,starter:isStarter,spectator:!!spectator}:null,
     clues:active?room.clues[active.id]||[]:[], hands:active?room.hands[active.id]||[]:[],
     verified:active?room.verified[active.id]||[]:[], predictions:room.players.map(p=>({id:p.id,name:p.name,locked:!!room.predictions[p.id],earned:(room.phase==='reveal'||(room.phase==='finished'&&room.endReason==='points'))&&p.id===player?room.earned[p.id]||0:undefined})),
-    log:room.log, winners:room.winners, deckCount:room.deck.length,
+    log:room.log, winners:room.winners, finalScores:room.phase==='finished'?(room.rankings||[]).map(r=>({id:r.id,name:r.name,rank:r.rank,points:room.finalPoints?.[r.id]??0})):null, deckCount:room.deck.length,
     canAct:room.phase==='actions'&&room.players[room.turn]?.id===player,
     canStart:room.phase==='lobby'&&(admin||isStarter)&&room.players.length>=1,noAdmin:!(room.adminIds||[]).length,starterName:starterPerson?.name||null,canNext:room.phase==='reveal'&&(!!active||admin||isStarter),canTakeSeat:room.phase==='lobby'&&!active&&(adminOnly||!!spectator)&&(admin||isStarter)&&room.players.length<MAX_PLAYERS,canStepOut:room.phase==='lobby'&&!!active&&admin,
     actionIndex:room.acted, roomEvents:room.roomEvents, previousVersions:Array.from({length:room.version},(_,version)=>version),adminLog:admin?room.adminLog:[],adminAudit:admin?room.audit:[],adminView:admin?{currentEngine:room.state?[...room.state]:null,currentVersion:room.version,players:room.players.map(p=>({id:p.id,name:p.name,points:p.points,connected:!!p.socket,hand:room.hands[p.id]||[],clues:room.clues[p.id]||[],verified:room.verified[p.id]||[],prediction:room.predictions[p.id]?.values||null}))}:null
   };
 }
 function send(ws,obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
-function broadcast(room){ for(const p of [...room.players,...room.spectators,...(room.adminSeat?[room.adminSeat]:[])]) if(p.socket) send(p.socket,{type:'state',state:serial(room,p.id)}); }
+function broadcast(room){ syncTurnTimer(room); for(const p of [...room.players,...room.spectators,...(room.adminSeat?[room.adminSeat]:[])]) if(p.socket) send(p.socket,{type:'state',state:serial(room,p.id)}); }
 function error(ws,message){send(ws,{type:'error',message});}
 // Each round has a fixed turn order that starts at roundStarter and wraps around the table, so every active player acts exactly once.
 function syncTurn(room){const i=room.players.findIndex(p=>p.id===room.order[room.acted]);room.turn=i<0?room.players.length:i;}
 function beginRound(room){const n=room.players.length;room.order=n?Array.from({length:n},(_,i)=>room.players[(room.roundStarter+i)%n].id):[];room.acted=0;syncTurn(room);}
 function advance(room){room.acted++;syncTurn(room);if(room.acted>=room.order.length){room.phase='predict';addLog(room,'All actions are in. Lock your three-dial prediction.');}}
+// ---- Turn timer (action phase only) ----
+// room.turnSeconds is set by the admin; 0 turns the timer off. The clock is keyed on round, turn position and the player
+// whose turn it is, so reconnect broadcasts never reset it, while a new turn (or a removed player) always starts a fresh one.
+function skipTurn(room,p,reason){
+  const text=reason==='time'?`${p.name} ran out of time. Their action was skipped.`:`${p.name} is offline. Their action was skipped this round.`;
+  addLog(room,text);addAdminLog(room,text);addAudit(room,{player:p.name,action:`Skipped action (${reason==='time'?'timer ran out':'offline'})`});
+  if(reason==='time'&&p.socket)send(p.socket,{type:'error',message:'Time ran out. Your action was skipped.'});
+  advance(room);
+}
+function syncTurnTimer(room){
+  for(let guard=room.players.length+1;guard>0;guard--){
+    const current=room.phase==='actions'&&room.turnSeconds>0?room.players[room.turn]:null;
+    const key=current?`${room.round}:${room.acted}:${current.id}:${room.turnSeconds}`:null;
+    if(key===room.timerKey)return;
+    if(room.turnTimer){clearTimeout(room.turnTimer);room.turnTimer=null;}
+    room.timerKey=key;room.turnDeadline=null;
+    if(!key)return;
+    // Players who are offline when their turn arrives are skipped, unless nobody at all is connected (then the game waits).
+    if(!current.socket&&room.players.some(x=>x.socket)){skipTurn(room,current,'offline');continue;}
+    room.turnDeadline=Date.now()+room.turnSeconds*1000;
+    room.turnTimer=setTimeout(()=>{
+      room.turnTimer=null;
+      if(rooms.get(room.code)!==room||room.timerKey!==key||room.phase!=='actions')return;
+      if(!room.players.some(x=>x.socket)){room.timerKey=null;room.turnDeadline=null;return;}
+      const p=room.players[room.turn];if(!p)return;
+      skipTurn(room,p,'time');broadcast(room);
+    },room.turnSeconds*1000+500);
+    return;
+  }
+}
 function moveSeat(room,id,{spectate=false}={}){
   const index=room.players.findIndex(p=>p.id===id);
   if(index>=0){
@@ -140,7 +170,7 @@ function snapshotRankings(room,perfectIds=[]){
   const rows=room.players.map(p=>({id:p.id,name:p.name,points:p.points,perfect:perfectIds.includes(p.id)})).sort((a,b)=>Number(b.perfect)-Number(a.perfect)||b.points-a.points);
   let rank=0;
   room.rankings=rows.map((p,i)=>{if(i===0||p.perfect!==rows[i-1].perfect||p.points!==rows[i-1].points)rank=i+1;return {id:p.id,name:p.name,rank};});
-  room.rankingRound=room.round;
+  room.rankingRound=room.round;room.finalPoints=Object.fromEntries(rows.map(p=>[p.id,p.points]));
 }
 
 function scorePredictions(room){
@@ -162,10 +192,10 @@ function handle(room,player,msg,ws){
     if(!isAdmin(room,player))return error(ws,'Only an admin can use admin controls.');
     if(msg.action==='settings'){
       if(room.phase==='finished')return error(ws,'This game is complete.');
-      const fields=['roundLimit','startingPoints','revealReward','verifyReward','interfereReward','cardReward','oneDialReward','twoDialReward','cluePrice'],updated={};
-      for(const key of fields){const value=Number(msg[key]);const signed=['revealReward','verifyReward','interfereReward','cardReward','oneDialReward','twoDialReward'].includes(key),min=key==='roundLimit'?1:signed?-20:0,max=key==='roundLimit'?12:key==='startingPoints'?100:20;if(!Number.isInteger(value)||value<min||value>max)return error(ws,`Invalid value for ${key}.`);updated[key]=value;}
+      const fields=['roundLimit','startingPoints','revealReward','verifyReward','interfereReward','cardReward','oneDialReward','twoDialReward','cluePrice','turnSeconds'],updated={};
+      for(const key of fields){const value=Number(msg[key]);const signed=['revealReward','verifyReward','interfereReward','cardReward','oneDialReward','twoDialReward'].includes(key),min=key==='roundLimit'?1:signed?-20:0,max=key==='roundLimit'?12:key==='startingPoints'?100:key==='turnSeconds'?120:20;if(!Number.isInteger(value)||value<min||value>max)return error(ws,`Invalid value for ${key}.`);if(key==='turnSeconds'&&value>0&&value<5)return error(ws,'The turn timer must be off (0) or at least 5 seconds.');updated[key]=value;}
       const variant=msg.variant||room.variant;if(!['classic','mixed','paid'].includes(variant))return error(ws,'Choose a valid variant.');if(room.phase!=='lobby'&&variant!==room.variant)return error(ws,'Choose the variant before starting.');room.variant=variant;Object.assign(room,updated);
-      const text=`Game values updated: ${room.roundLimit} rounds; start ${room.startingPoints}; reveal ${fmtPts(room.revealReward)}; verify ${fmtPts(room.verifyReward)}; interfere ${fmtPts(room.interfereReward)}; card ${fmtPts(room.cardReward)}; guesses ${fmtPts(room.oneDialReward)}/${fmtPts(room.twoDialReward)}.`;addAdminLog(room,text);addAudit(room,{player:room.adminSeat?.name||room.players.find(x=>x.id===player)?.name||'Admin',action:text});broadcast(room);return;
+      const text=`Game values updated: ${room.roundLimit} rounds; start ${room.startingPoints}; reveal ${fmtPts(room.revealReward)}; verify ${fmtPts(room.verifyReward)}; interfere ${fmtPts(room.interfereReward)}; card ${fmtPts(room.cardReward)}; guesses ${fmtPts(room.oneDialReward)}/${fmtPts(room.twoDialReward)}; turn timer ${room.turnSeconds?room.turnSeconds+'s':'off'}.`;addAdminLog(room,text);addAudit(room,{player:room.adminSeat?.name||room.players.find(x=>x.id===player)?.name||'Admin',action:text});broadcast(room);return;
     }
     if(msg.action==='adminRole'){
       const action=msg.roleAction,target=String(msg.playerId||'');
