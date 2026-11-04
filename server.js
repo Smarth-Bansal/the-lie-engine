@@ -14,8 +14,9 @@ const uid = n => crypto.randomBytes(n).toString('hex');
 const shuffled = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=rand(i+1);[b[i],b[j]]=[b[j],b[i]];} return b; };
 const blankRoom = (code, host) => ({code,host,adminSeat:null,adminIds:[],variant:'classic',cluePrice:2,publicClues:[],purchased:{},rankings:[],rankingRound:0,lastAdminId:null,players:[],spectators:[],phase:'lobby',round:0,roundLimit:6,startingPoints:10,revealReward:2,revealPreviousReward:2,revealTwoBackReward:1,announceInterference:false,interferenceAnnounced:false,interferenceDials:[],announcedDials:[],verifyReward:-1,interfereReward:-2,cardReward:1,oneDialReward:1,twoDialReward:3,turn:0,acted:0,order:[],roundStarter:0,publicVersion:null,version:0,state:null,history:[],deck:[],discard:[],log:[],adminLog:[],audit:[],roundStart:0,roundEnd:null,winners:[],endReason:null,clues:{},hands:{},verified:{},predictions:{},earned:{},roomEvents:[]});
 
+function roomDials(room){return room.dials||['A','B','C'];}
 function applyCard(room, card, dial) {
-  const i='ABC'.indexOf(dial), old=room.state[i]; let value;
+  const i=roomDials(room).indexOf(dial), old=room.state[i]; let value;
   if(card==='Forward Pulse') value=(old+1)%4;
   else if(card==='Reverse Pulse') value=(old+3)%4;
   else if(card==='Double Pulse') value=(old+2)%4;
@@ -28,7 +29,7 @@ function applyCard(room, card, dial) {
 }
 
 function refreshEventClues(room,dial){
-  const version=room.version-1,index='ABC'.indexOf(dial);
+  const version=room.version-1,index=roomDials(room).indexOf(dial);
   room.publicVersion=room.version;
   for(const player of room.players){
     const clues=room.clues[player.id]||[],matches=clues.filter(c=>c.dial===dial);
@@ -46,7 +47,7 @@ function refreshEventClues(room,dial){
 }
 
 function draw(room,allowQuantum=true){const indices=room.deck.map((card,i)=>({card,i})).filter(x=>allowQuantum||x.card!=='Quantum Jump');if(!indices.length)return null;return room.deck.splice(indices[rand(indices.length)].i,1)[0];}
-function randomClue(room,version,usedDials=[],dealtRound=room.round){ const available='ABC'.split('').filter(d=>!usedDials.includes(d));if(!available.length)return null;const dial=available[rand(available.length)];return {id:uid(5),version,dial,value:room.history[version]['ABC'.indexOf(dial)],dealtRound}; }
+function randomClue(room,version,usedDials=[],dealtRound=room.round){ const available=roomDials(room).filter(d=>!usedDials.includes(d));if(!available.length)return null;const dial=available[rand(available.length)];return {id:uid(5),version,dial,value:room.history[version][roomDials(room).indexOf(dial)],dealtRound}; }
 function addLog(room,text){room.log.push({text,at:Date.now()});room.log=room.log.slice(-40);}
 function addAdminLog(room,text){room.adminLog.unshift({text,at:Date.now()});room.adminLog=room.adminLog.slice(0,400);}
 function addAudit(room,{player='',clues='',action='',prediction='',points=''}={}){room.audit.push({round:room.round||0,player,clues,action,prediction,points,at:Date.now()});if(room.audit.length>4000)room.audit.splice(0,room.audit.length-4000);}
@@ -62,7 +63,7 @@ function releaseAdminSeat(room,id){if(room.adminSeat?.id===id){room.spectators.p
 function serial(room, player) {
   const active=room.players.find(p=>p.id===player),spectator=room.spectators.find(p=>p.id===player),adminOnly=room.adminSeat?.id===player,own=active||spectator||(adminOnly?room.adminSeat:null),admin=isAdmin(room,player),starterId=caretaker(room),isStarter=starterId===player,starterPerson=starterId?everyone(room).find(x=>x.id===starterId):null;
   return {
-    code:room.code,variant:room.variant,cluePrice:room.cluePrice,publicClues:room.publicClues||[],boughtClue:room.purchased?.[player]===room.round, rankings:room.rankings||[], rankingRound:room.rankingRound||0, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,revealPreviousReward:room.revealPreviousReward,revealTwoBackReward:room.revealTwoBackReward,announceInterference:room.announceInterference,interferenceAnnounced:room.interferenceAnnounced,announcedDials:room.announcedDials||[],verifyReward:room.verifyReward,interfereReward:room.interfereReward,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
+    dials:room.phase==='lobby'?Array.from({length:room.variant==='mixed'?room.players.length+1:3},(_,i)=>String.fromCharCode(65+i)):roomDials(room),code:room.code,variant:room.variant,cluePrice:room.cluePrice,publicClues:room.publicClues||[],boughtClue:room.purchased?.[player]===room.round, rankings:room.rankings||[], rankingRound:room.rankingRound||0, phase:room.phase, round:room.round, roundLimit:room.roundLimit, startingPoints:room.startingPoints,revealReward:room.revealReward,revealPreviousReward:room.revealPreviousReward,revealTwoBackReward:room.revealTwoBackReward,announceInterference:room.announceInterference,interferenceAnnounced:room.interferenceAnnounced,announcedDials:room.announcedDials||[],verifyReward:room.verifyReward,interfereReward:room.interfereReward,cardReward:room.cardReward,oneDialReward:room.oneDialReward,twoDialReward:room.twoDialReward,endReason:room.endReason, turnPlayer:room.players[room.turn]?.id||null,
     publicVersion:room.publicVersion, roundStart:room.roundStart, roundEnd:room.roundEnd,
     finalState:room.phase==='finished'?[...room.state]:null, finalVersion:room.phase==='finished'?room.version:null,
     players:room.players.map(p=>({id:p.id,name:p.name,points:p.id===player||admin?p.points:undefined,host:isAdmin(room,p.id),admin:isAdmin(room,p.id),connected:!!p.socket,ready:!!room.predictions[p.id]})),
@@ -84,7 +85,7 @@ function error(ws,message){send(ws,{type:'error',message});}
 function syncTurn(room){const i=room.players.findIndex(p=>p.id===room.order[room.acted]);room.turn=i<0?room.players.length:i;}
 function beginRound(room){room.interferenceAnnounced=false;room.interferenceDials=[];room.announcedDials=[];const n=room.players.length;room.order=n?Array.from({length:n},(_,i)=>room.players[(room.roundStarter+i)%n].id):[];room.acted=0;syncTurn(room);}
 function revealPoints(room,clue){if(room.variant!=='classic')return room.revealReward;const age=room.version-clue.version;return age===1?room.revealPreviousReward:age===2?room.revealTwoBackReward:0;}
-function openPredictions(room){room.phase='predict';room.interferenceAnnounced=room.announceInterference;room.announcedDials=room.announceInterference?[...new Set(room.interferenceDials)].sort():[];if(room.announceInterference)addLog(room,room.announcedDials.length?`Interference occurred on dial${room.announcedDials.length===1?'':'s'} ${room.announcedDials.join(', ')} this round.`:'No interference occurred this round.');addLog(room,'All actions are in. Lock your three-dial prediction.');}
+function openPredictions(room){room.phase='predict';room.interferenceAnnounced=room.announceInterference;room.announcedDials=room.announceInterference?[...new Set(room.interferenceDials)].sort():[];if(room.announceInterference)addLog(room,room.announcedDials.length?`Interference occurred on dial${room.announcedDials.length===1?'':'s'} ${room.announcedDials.join(', ')} this round.`:'No interference occurred this round.');addLog(room,'All actions are in. Lock your prediction for every dial.');}
 function advance(room){room.acted++;syncTurn(room);if(room.acted>=room.order.length){openPredictions(room);}}
 function moveSeat(room,id,{spectate=false}={}){
   const index=room.players.findIndex(p=>p.id===id);
@@ -115,6 +116,13 @@ function excludePublicClues(room){
 }
 function dealVariantRound(room){
  if(room.variant==='classic')return;
+ if(room.variant==='mixed'){
+   const version=Math.max(0,room.version-1),make=dial=>({id:uid(5),dial,version,value:room.history[version][roomDials(room).indexOf(dial)],dealtRound:room.round});
+   const clue=make(room.clueDials[room.clueDials.length-1]);
+   room.publicClues=[{...clue,source:'system'}];
+   for(const p of room.players){const c=make(room.privateDials[p.id]);room.clues[p.id]=[c];room.verified[p.id]=[];addAudit(room,{player:p.name,clues:`V${c.version} · Dial ${c.dial} = ${c.value}`});}
+   addAudit(room,{player:'Public',clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});return;
+ }
  const version=Math.max(0,room.version-1),clue=randomClue(room,version);
  room.publicClues=[...room.publicClues.filter(c=>c.owner&&!(c.version===clue.version&&c.dial===clue.dial)),{...clue,source:'system'}];
  for(const p of room.players){const used=[...room.publicClues,...(room.clues[p.id]||[])].filter(c=>c.version===version).map(c=>c.dial),privateClue=room.variant==='mixed'?randomClue(room,version,used):null,dealt=privateClue?[privateClue]:[];room.clues[p.id]=[...(room.clues[p.id]||[]),...dealt];room.verified[p.id]=[];for(const c of dealt)addAudit(room,{player:p.name,clues:`V${c.version} · Dial ${c.dial} = ${c.value}`});}
@@ -124,9 +132,9 @@ function dealVariantRound(room){
 function start(room){
   if(room.players.length<1||room.players.length>MAX_PLAYERS||room.phase!=='lobby')return false;
   room.round=1;
-  room.state=[rand(4),rand(4),rand(4)];room.history=[[...room.state]];room.version=0;
+  room.dials=Array.from({length:room.variant==='mixed'?room.players.length+1:3},(_,i)=>String.fromCharCode(65+i));room.clueDials=[...room.dials];for(let i=room.clueDials.length-1;i>0;i--){const j=rand(i+1);[room.clueDials[i],room.clueDials[j]]=[room.clueDials[j],room.clueDials[i]];}room.privateDials=Object.fromEntries(room.players.map((p,i)=>[p.id,room.clueDials[i]]));room.state=room.dials.map(()=>rand(4));room.history=[[...room.state]];room.version=0;
   const copies=Math.max(4,Math.ceil((room.players.length*2+room.roundLimit+2)/names.length));room.deck=names.flatMap(n=>Array(copies).fill(n));room.discard=[];
-  for(let n=0;n<2;n++){const card=draw(room,false);if(card)applyCard(room,card,'ABC'[rand(3)]);}
+  for(let n=0;n<2;n++){const card=draw(room,false);if(card)applyCard(room,card,roomDials(room)[rand(roomDials(room).length)]);}
   room.audit=[];room.players.forEach(p=>{p.points=room.startingPoints;const first=randomClue(room,0);room.clues[p.id]=room.variant==='classic'?[first,randomClue(room,0,[first.dial]),randomClue(room,1)]:[];room.hands[p.id]=[draw(room),draw(room)];room.verified[p.id]=[];for(const clue of room.clues[p.id])addAudit(room,{player:p.name,clues:`V${clue.version} · Dial ${clue.dial} = ${clue.value}`});addAudit(room,{player:p.name,action:`Starting hand dealt: ${room.hands[p.id].join(', ')} (no replacements)`,points:`${p.points} starting points`});});
   room.publicVersion=room.version;room.roundStart=room.version;room.roundStarter=0;room.phase='actions';beginRound(room);room.log=[];room.predictions={};room.earned={};room.winners=[];room.endReason=null;room.roundEnd=null;room.roomEvents=[];room.publicClues=[];room.purchased={};dealVariantRound(room);
   addLog(room,`Round 1 begins at public Version ${room.publicVersion}. ${room.players[room.turn].name} takes the first turn.`);addAdminLog(room,`Game started: ${room.players.length} players, ${room.roundLimit} rounds.`);addAudit(room,{player:room.adminSeat?.name||'Room host',action:`Game started · ${room.players.length} players · ${room.roundLimit} rounds · first turn: ${room.players[room.turn].name}`});return true;
@@ -147,14 +155,14 @@ function snapshotRankings(room,perfectIds=[]){
 
 function scorePredictions(room){
   const results=room.players.map(p=>{const guess=room.predictions[p.id].values;return {player:p,correct:guess.reduce((n,v,i)=>n+(v===room.state[i]?1:0),0)}});
-  const perfect=results.filter(r=>r.correct===3).map(r=>r.player);
+  const perfect=results.filter(r=>r.correct===room.state.length).map(r=>r.player);
   room.phase='reveal';
-  for(const {player:p} of results){const guess=room.predictions[p.id].values,actual=room.state,before=p.points,parts=['A','B','C'].map((dial,i)=>`${dial}: guessed ${guess[i]}, actual ${actual[i]} ${guess[i]===actual[i]?'✓':'✗'}`);addAudit(room,{player:p.name,prediction:parts.join(' · '),points:`${before} before scoring`});}
-  if(perfect.length){room.endReason='perfect';room.winners=perfect.map(p=>p.id);snapshotRankings(room,room.winners);room.roundEnd=room.version;room.phase='finished';addLog(room,`${perfect.map(p=>p.name).join(' and ')} ${perfect.length===1?'has':'have'} guessed all three dials. Version ${room.roundStart} → ${room.roundEnd}; no automatic event was applied.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
-  for(const {player:p,correct} of results){const before=p.points,raw=correct===2?room.twoDialReward:correct===1?room.oneDialReward:0,earned=Math.max(raw,-p.points);room.earned[p.id]=earned;p.points+=earned;addAudit(room,{player:p.name,points:`${before} → ${p.points} (${earned?`${fmtPts(earned)} for ${correct} correct dial${correct===1?'':'s'}`:'no prediction points'})`});}
+  for(const {player:p} of results){const guess=room.predictions[p.id].values,actual=room.state,before=p.points,parts=roomDials(room).map((dial,i)=>`${dial}: guessed ${guess[i]}, actual ${actual[i]} ${guess[i]===actual[i]?'✓':'✗'}`);addAudit(room,{player:p.name,prediction:parts.join(' · '),points:`${before} before scoring`});}
+  if(perfect.length){room.endReason='perfect';room.winners=perfect.map(p=>p.id);snapshotRankings(room,room.winners);room.roundEnd=room.version;room.phase='finished';addLog(room,`${perfect.map(p=>p.name).join(' and ')} ${perfect.length===1?'has':'have'} guessed all dials. Version ${room.roundStart} → ${room.roundEnd}; no automatic event was applied.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
+  for(const {player:p,correct} of results){const before=p.points,raw=correct>=2?room.twoDialReward:correct===1?room.oneDialReward:0,earned=Math.max(raw,-p.points);room.earned[p.id]=earned;p.points+=earned;addAudit(room,{player:p.name,points:`${before} → ${p.points} (${earned?`${fmtPts(earned)} for ${correct} correct dial${correct===1?'':'s'}`:'no prediction points'})`});}
   snapshotRankings(room);
   const card=draw(room);
-  if(card){const dial='ABC'[rand(3)],i='ABC'.indexOf(dial),old=room.state[i];applyCard(room,card,dial);if(room.variant!=='classic')refreshEventClues(room,dial);addAudit(room,{player:'Automatic event',action:`${card} on ${dial}: ${old} → ${room.state[i]} (V${room.version})`});addLog(room,`Automatic event: Version ${room.version}.`);}else addLog(room,'No Event Cards remain. No automatic event this round.');
+  if(card){const dial=roomDials(room)[rand(roomDials(room).length)],i=roomDials(room).indexOf(dial),old=room.state[i];applyCard(room,card,dial);if(room.variant!=='classic')refreshEventClues(room,dial);addAudit(room,{player:'Automatic event',action:`${card} on ${dial}: ${old} → ${room.state[i]} (V${room.version})`});addLog(room,`Automatic event: Version ${room.version}.`);}else addLog(room,'No Event Cards remain. No automatic event this round.');
   room.roundEnd=room.version;
   if(room.round>=room.roundLimit){const high=Math.max(...room.players.map(p=>p.points));room.winners=room.players.filter(p=>p.points===high).map(p=>p.id);room.endReason='points';room.phase='finished';addLog(room,`${room.roundLimit} rounds complete. ${room.players.filter(p=>room.winners.includes(p.id)).map(p=>p.name).join(' and ')} ${room.winners.length===1?'wins':'share the win'} on points.`);for(const p of room.players)addAudit(room,{player:p.name,points:`FINAL TOTAL: ${p.points}${room.winners.includes(p.id)?' · WINNER':''}`});return;}
 }
@@ -233,16 +241,16 @@ function handle(room,player,msg,ws){
       if(room.roomEvents.some(e=>e.clue?.version===clue.version&&e.clue?.dial===clue.dial)||(room.publicClues||[]).some(c=>c.version===clue.version&&c.dial===clue.dial))return error(ws,'That clue is already public.');
       const reward=revealPoints(room,clue);if(!canAfford(p,reward))return error(ws,`Revealing costs ${-reward} points and you have ${p.points}.`);const before=p.points;p.points+=reward;room.roomEvents.push({id:uid(4),clue:{...clue,owner:p.name}});if(room.variant!=='classic'){room.publicClues.push({...clue,owner:p.name});excludePublicClues(room);}const text=`Revealed V${clue.version}, dial ${clue.dial} = ${clue.value}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='verify'){
-      if(!canAfford(p,room.verifyReward))return error(ws,`You need at least ${-room.verifyReward} points to verify.`);const clue=room.clues[player]?.find(c=>c.id===msg.clueId);if(!clue)return error(ws,'Choose one of your clues first.');const before=p.points;p.points+=room.verifyReward;const yes=room.state['ABC'.indexOf(clue.dial)]===clue.value;room.verified[player].unshift({clueId:clue.id,answer:yes,round:room.round});room.verified[player]=room.verified[player].slice(0,20);const text=`Verified V${clue.version}, dial ${clue.dial} = ${clue.value}: ${yes?'MATCH':'NO MATCH'}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
+      if(!canAfford(p,room.verifyReward))return error(ws,`You need at least ${-room.verifyReward} points to verify.`);const clue=room.clues[player]?.find(c=>c.id===msg.clueId);if(!clue)return error(ws,'Choose one of your clues first.');const before=p.points;p.points+=room.verifyReward;const yes=room.state[roomDials(room).indexOf(clue.dial)]===clue.value;room.verified[player].unshift({clueId:clue.id,answer:yes,round:room.round});room.verified[player]=room.verified[player].slice(0,20);const text=`Verified V${clue.version}, dial ${clue.dial} = ${clue.value}: ${yes?'MATCH':'NO MATCH'}`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='interfere'){
-      if(!canAfford(p,room.interfereReward))return error(ws,`You need at least ${-room.interfereReward} points to interfere.`);if(!'ABC'.includes(msg.dial)||![-1,1].includes(msg.direction))return error(ws,'Choose a dial and a direction.');const before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];p.points+=room.interfereReward;room.state[i]=(room.state[i]+msg.direction+4)%4;room.version++;room.history[room.version]=[...room.state];
+      if(!canAfford(p,room.interfereReward))return error(ws,`You need at least ${-room.interfereReward} points to interfere.`);if(!roomDials(room).includes(msg.dial)||![-1,1].includes(msg.direction))return error(ws,'Choose a dial and a direction.');const before=p.points,i=roomDials(room).indexOf(msg.dial),old=room.state[i];p.points+=room.interfereReward;room.state[i]=(room.state[i]+msg.direction+4)%4;room.version++;room.history[room.version]=[...room.state];
       room.interferenceDials.push(msg.dial);const text=`Interfered with dial ${msg.dial}: ${old} → ${room.state[i]} (Version ${room.version})`;addAdminLog(room,`${p.name} ${text}.`);addAudit(room,{player:p.name,action:text,points:`${before} → ${p.points}`});advance(room);
     } else if(a==='card'){
       const hand=room.hands[player]||[],idx=hand.indexOf(msg.card);if(idx<0)return error(ws,'Choose an Event Card in your hand.');
-      if(!/^[ABC]$/.test(msg.dial))return error(ws,'Choose a target dial.');
+      if(!roomDials(room).includes(msg.dial))return error(ws,'Choose a target dial.');
       const target=room.version-1;
       if(!canAfford(p,room.cardReward))return error(ws,'Not enough points to play an Event Card.');
-      const card=hand.splice(idx,1)[0],before=p.points,i='ABC'.indexOf(msg.dial),old=room.state[i];
+      const card=hand.splice(idx,1)[0],before=p.points,i=roomDials(room).indexOf(msg.dial),old=room.state[i];
       if(card==='Quantum Jump'){room.state[i]=room.history[target][i];room.version++;room.history[room.version]=[...room.state];room.discard.push(card);}else applyCard(room,card,msg.dial);
       p.points+=room.cardReward;addLog(room,`${p.name} plays an Event Card on dial ${msg.dial} and ${pointsPhrase(room.cardReward)}.`);
       addAudit(room,{player:p.name,action:`Played ${card} on ${msg.dial}: ${old} → ${room.state[i]} (V${room.version})${card==='Quantum Jump'?` · restored V${target}`:''}`,points:`${before} → ${p.points}`});
@@ -251,7 +259,7 @@ function handle(room,player,msg,ws){
     broadcast(room);return;
   }
   if(msg.type==='predict'){
-    if(room.phase!=='predict')return error(ws,'Predictions are not open yet.');if(room.predictions[player])return error(ws,'Your prediction is already locked.');if(!Array.isArray(msg.values)||msg.values.length!==3||msg.values.some(v=>!Number.isInteger(v)||v<0||v>3))return error(ws,'Choose values from 0 to 3 for A, B and C.');room.predictions[player]={values:msg.values};addAdminLog(room,`${p.name} locked a prediction: A ${msg.values[0]}, B ${msg.values[1]}, C ${msg.values[2]}.`);addAudit(room,{player:p.name,prediction:`Locked: A ${msg.values[0]} · B ${msg.values[1]} · C ${msg.values[2]}`});
+    if(room.phase!=='predict')return error(ws,'Predictions are not open yet.');if(room.predictions[player])return error(ws,'Your prediction is already locked.');if(!Array.isArray(msg.values)||msg.values.length!==room.state.length||msg.values.some(v=>!Number.isInteger(v)||v<0||v>3))return error(ws,'Choose a value from 0 to 3 for every dial.');room.predictions[player]={values:msg.values};addAdminLog(room,`${p.name} locked a prediction: ${roomDials(room).map((d,i)=>`${d} ${msg.values[i]}`).join(', ')}.`);addAudit(room,{player:p.name,prediction:`Locked: ${roomDials(room).map((d,i)=>`${d} ${msg.values[i]}`).join(' · ')}`});
     if(room.players.every(x=>room.predictions[x.id]))scorePredictions(room);
     broadcast(room);return;
   }
