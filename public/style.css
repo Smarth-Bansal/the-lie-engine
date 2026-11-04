@@ -37,3 +37,5 @@ img.brand-mark{display:block;width:40px;height:40px;padding:0;border:0;border-ra
 .top-status.hidden{display:none!important}
 
 .clue-hint{display:block;flex-basis:100%;order:3;margin-top:6px;color:#bfc1c2;font:12px/1.5 Arial,Helvetica,sans-serif}.clue-row{flex-wrap:wrap}.card-hint{display:block;margin-top:5px;max-width:340px;color:#bfc1c2;font:12px/1.5 Arial,Helvetica,sans-serif;white-space:normal;text-transform:none;letter-spacing:0}.hand-card{white-space:normal}
+
+.dials{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:10px}.prediction-grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
