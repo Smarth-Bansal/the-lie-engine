@@ -35,3 +35,5 @@ body{background:#17191b;color:#e8e8e8;background-image:none;font-family:Arial,He
 /* logo image in the header */
 img.brand-mark{display:block;width:40px;height:40px;padding:0;border:0;border-radius:9px;object-fit:contain;letter-spacing:0}
 .top-status.hidden{display:none!important}
+
+.clue-hint{display:block;flex-basis:100%;order:3;margin-top:6px;color:#bfc1c2;font:12px/1.5 Arial,Helvetica,sans-serif}.clue-row{flex-wrap:wrap}.card-hint{display:block;margin-top:5px;max-width:340px;color:#bfc1c2;font:12px/1.5 Arial,Helvetica,sans-serif;white-space:normal;text-transform:none;letter-spacing:0}.hand-card{white-space:normal}
